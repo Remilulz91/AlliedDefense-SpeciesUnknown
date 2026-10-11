@@ -1,0 +1,1 @@
+Read by UE4SS: its presence enables the mod (no need to edit mods.txt).

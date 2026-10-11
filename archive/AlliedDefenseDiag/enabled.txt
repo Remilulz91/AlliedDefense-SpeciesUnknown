@@ -1,0 +1,1 @@
+Fichier lu par UE4SS : sa presence active le mod (pas besoin de toucher a mods.txt).
