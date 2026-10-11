@@ -212,3 +212,20 @@ AlliedDefense-SpeciesUnknown/
 - Zombie games: one crash in 0.9.4 (code removed since); not re-tested with 1.0.0.
 - Every game update may rename classes/functions: if turrets act vanilla again, enable
   `debugLogs = true` and look for `Still N hook(s) not installed` / `Hook not ready yet` lines.
+
+## Copyright and license
+
+© 2026 **Remilulz_91** ([@Remilulz91](https://github.com/Remilulz91)). **All rights reserved.**
+
+This project (code, configuration, documentation and release files) is the property of its author.
+No open-source license is granted. You may download the releases and use the mod for your own games,
+but you may **not**, without the author's prior written permission:
+
+- copy, modify, redistribute or re-upload this project or any part of it (on Nexus, GitHub,
+  Thunderstore, Discord or anywhere else), including in modpacks;
+- claim it as your own, remove or change the author credit, or publish a "fork" / derivative mod;
+- sell it or use it for any commercial purpose.
+
+**Want to help?** Contributions, bug reports and ideas are welcome: contact the author first
+(GitHub issue or [@Remilulz91](https://github.com/Remilulz91)). Any accepted contribution becomes
+part of this project and is published only through this repository.
