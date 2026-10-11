@@ -19,6 +19,17 @@ never shoot players anymore and fight the specimens instead.
 
 ## Install
 
+### From a release (players)
+
+1. Download `AlliedDefense-vX.Y.Z.zip` from the
+   [Releases page](https://github.com/Remilulz91/AlliedDefense-SpeciesUnknown/releases).
+2. Extract it into the UE4SS `Mods` folder, e.g.
+   `...\Species Unknown\SpeciesUnknown\Binaries\Win64\ue4ss\Mods\`
+   so that you get `ue4ss\Mods\AlliedDefense\enabled.txt` and `ue4ss\Mods\AlliedDefense\Scripts\`.
+3. Launch the game. `AlliedDefense.log` appears in the mod folder.
+
+### From the sources (development)
+
 ```bat
 tools\install.bat        :: copies the mods into ue4ss\Mods
 tools\install-dev.bat    :: links them instead (edits are live, logs land in the project)

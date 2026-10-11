@@ -1,0 +1,55 @@
+# Builds the mod zip and publishes a GitHub Release when a version tag is pushed:
+#   git tag v1.0.1
+#   git push origin v1.0.1
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that the tag matches the mod version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VER=$(grep -m1 -oP 'local VERSION = "\K[^"]+' mods/AlliedDefense/Scripts/main.lua)
+          echo "Tag: $TAG - main.lua VERSION: $VER"
+          if [ "$TAG" != "$VER" ]; then
+            echo "::error::Tag v$TAG does not match VERSION \"$VER\" in main.lua"
+            exit 1
+          fi
+          echo "VER=$VER" >> "$GITHUB_ENV"
+
+      - name: Build the mod zip
+        run: |
+          cd mods
+          zip -r "../AlliedDefense-${GITHUB_REF_NAME}.zip" AlliedDefense -x "*.log"
+          cd ..
+          unzip -l "AlliedDefense-${GITHUB_REF_NAME}.zip"
+
+      - name: Release notes (changelog entry from README.md)
+        run: |
+          {
+            awk -v v="$VER" '
+              index($0, "- **" v "**") == 1 { p = 1; print; next }
+              p && (/^- \*\*/ || /^## /) { exit }
+              p { print }
+            ' README.md
+            echo
+            echo "**Install:** extract \`AlliedDefense-${GITHUB_REF_NAME}.zip\` into \`...\\SpeciesUnknown\\Binaries\\Win64\\ue4ss\\Mods\\\`"
+            echo "(requires the RE-UE4SS experimental build for UE 5.7 + the Species Unknown signature file)."
+          } > notes.md
+          cat notes.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: AlliedDefense ${{ github.ref_name }}
+          body_path: notes.md
+          files: AlliedDefense-${{ github.ref_name }}.zip

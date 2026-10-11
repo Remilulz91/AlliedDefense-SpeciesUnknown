@@ -1,2 +1,5 @@
 # Logs du diagnostic
 *.log
+
+# Release archives (uploaded to GitHub Releases, not versioned)
+release/
