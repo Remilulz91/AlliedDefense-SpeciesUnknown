@@ -4,6 +4,9 @@ Port of the **AlliedDefenses** idea (Lethal Company) and **Allied Defense — L4
 to *Species: Unknown*: the ceiling turrets of the **Sentry Turrets** modifier
 never shoot players anymore and fight the specimens instead.
 
+**Download:** [Nexus Mods](https://www.nexusmods.com/speciesunknown/mods/22) ·
+[GitHub Releases](https://github.com/Remilulz91/AlliedDefense-SpeciesUnknown/releases)
+
 > Separate project from `../AlliedDefenses` (C#/BepInEx) and `../AlliedDefense-L4D2` (VScript).
 > Here: **UE4SS Lua**, no Unreal Engine tooling required.
 > Author: **Remilulz_91** — © 2026 Remilulz_91, all rights reserved.
@@ -21,8 +24,8 @@ never shoot players anymore and fight the specimens instead.
 
 ### From a release (players)
 
-1. Download `AlliedDefense-vX.Y.Z.zip` from the
-   [Releases page](https://github.com/Remilulz91/AlliedDefense-SpeciesUnknown/releases).
+1. Download `AlliedDefense-vX.Y.Z.zip` from [Nexus Mods](https://www.nexusmods.com/speciesunknown/mods/22)
+   or the [Releases page](https://github.com/Remilulz91/AlliedDefense-SpeciesUnknown/releases).
 2. Extract it into the UE4SS `Mods` folder, e.g.
    `...\Species Unknown\SpeciesUnknown\Binaries\Win64\ue4ss\Mods\`
    so that you get `ue4ss\Mods\AlliedDefense\enabled.txt` and `ue4ss\Mods\AlliedDefense\Scripts\`.
