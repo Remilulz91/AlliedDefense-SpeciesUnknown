@@ -1,4 +1,4 @@
--- AlliedDefense v1.0.0 - Species: Unknown (UE4SS Lua)
+-- AlliedDefense v1.1.0 - Species: Unknown (UE4SS Lua)
 -- Author: Remilulz_91
 --
 -- Ceiling turrets (BP_SentryGun_C) no longer target players and shoot monsters instead.
@@ -17,6 +17,8 @@
 --     Handle_Shoot / CurrentTrg_Handle : a player target is swapped for the nearest
 --                                monster (or dropped) right before aiming/shooting
 --     PawnDetectionSphere overlap : players never enter the turret's sensor
+--     Handle_Shoot (v1.1.0)    : a shot at a visible monster also hits an explosive canister
+--                                lying next to it (no player in the blast) -> it explodes
 --   Background loop: ally colour (option), player wake threshold,
 --   TryToWakeUp(monster) on sleeping turrets, optional monster class dump,
 --   and (v0.8.3) injection of monsters into the turret's potential_trgs map:
@@ -33,7 +35,7 @@
 --
 -- Turret logic runs on the host (HasAuthority). In multiplayer, the host needs the mod.
 
-local VERSION = "1.0.0"
+local VERSION = "1.1.0"
 local MOD = "AlliedDefense"
 
 ---------------------------------------------------------------------------
@@ -72,6 +74,12 @@ default("backgroundIntervalMs", 1000)
 default("modifier", "CONTROL")
 default("toggleKey", "F10")
 default("verboseKey", "F11")
+default("canisterKey", "F7")
+default("shootCanisters", true)
+default("canisterClass", "BP_HoldItem_ExplosiveCanister_Fire_C")
+default("canisterTriggerRadius", 400)
+default("canisterSafeRadius", 800)
+default("canisterShotDamage", 2.0)
 default("verbose", false)
 default("debugLogs", false)
 default("mode", "phases")
@@ -549,6 +557,10 @@ local function friendSubstitute(t)
     return t   -- fallback: the turret itself
 end
 
+-- v1.1.0 canisters: defined further down (forward declarations, used by IsFriend)
+local canisters = { list = {}, armed = {} }
+local isCanister, canisterIsArmedNow
+
 local function preIsFriend(ctx, pActor)
     local t = getSelf(ctx)
     local b = behave(t)
@@ -643,6 +655,114 @@ local function preSelectTrg(ctx)
     addNearbyMonsters(t)   -- ally and chaos
 end
 
+---------------------------------------------------------------------------
+-- v1.1.0: explosive canisters (fire / frost). An ALLIED turret treats an explosive
+-- canister lying next to a monster as a target, as long as no player stands in the blast.
+-- Canister facts (canister_dump.log, v1.0.1-diag):
+--   BP_HoldItem_ExplosiveCanister_Fire_C (Frost_C is a child), Health = 6,
+--   HaveExploded, IsGrabbed; damage -> ReceiveAnyDamage -> Explosion(Instigator).
+-- test3: a shot of an allied turret at a monster it SEES also hits an armed canister lying
+-- next to that monster (game damage -> the canister's own Health / Explosion logic).
+-- Tests: test1 swapped current_trg (the turret switched back within 1 s) and forced the
+-- explosion after 4 s (explosions through walls); test2 added the canister to the turret's
+-- target lists, but the turret's own selection ignores non-pawns (never aimed at it).
+-- Canisters are listed once per background tick as {path, addr, x, y, z} (never as
+-- UObjects) and re-validated right before use.
+---------------------------------------------------------------------------
+isCanister = function(o)
+    return valid(o) and className(o):find("ExplosiveCanister", 1, true) ~= nil
+end
+
+local function canisterArmed(c)
+    if not valid(c) then return false end
+    if readProp(c, "HaveExploded") == true or readProp(c, "IsGrabbed") == true then return false end
+    return not valid(safe(function() return c:GetAttachParentActor() end))
+end
+
+local function playerNear(x, y, z, r)
+    local r2 = r * r
+    for _, p in ipairs(liveList(cache.players)) do
+        local px, py, pz = location(p)
+        if px and ((px - x) ^ 2 + (py - y) ^ 2 + (pz - z) ^ 2) <= r2 then return true end
+    end
+    return false
+end
+
+-- armed = next to a monster, nobody in the blast, not carried, not exploded
+local function refreshCanisters()
+    canisters.list, canisters.armed = {}, {}
+    if not cfg.enabled or not cfg.shootCanisters then return end
+    if cfg.mode == "vanilla" or cfg.mode == "neutral" then return end
+    local snap = monstersNow()
+    if #snap == 0 then return end
+    local tr2 = cfg.canisterTriggerRadius ^ 2
+    for _, c in ipairs(findAll(cfg.canisterClass)) do
+        if canisterArmed(c) then
+            local x, y, z = location(c)
+            if x then
+                local near = false
+                for _, m in ipairs(snap) do
+                    if ((m.x - x) ^ 2 + (m.y - y) ^ 2 + (m.z - z) ^ 2) <= tr2 then near = true break end
+                end
+                if near and not playerNear(x, y, z, cfg.canisterSafeRadius) then
+                    local e = entry(c)
+                    if e then
+                        e.x, e.y, e.z = x, y, z
+                        canisters.list[#canisters.list + 1] = e
+                        canisters.armed[e.path] = true
+                    end
+                end
+            end
+        end
+    end
+end
+
+canisterIsArmedNow = function(c)
+    if not canisterArmed(c) then return false end
+    local e = entry(c)
+    if not e or not canisters.armed[e.path] then return false end
+    local x, y, z = location(c)
+    return x ~= nil and not playerNear(x, y, z, cfg.canisterSafeRadius)
+end
+
+-- Each real shot (Handle_Shoot, server side) of an allied turret at a monster it sees:
+-- an armed canister within canisterTriggerRadius of that monster takes the bullet damage.
+local canHitLogged = {}
+local function canisterShot(t)
+    if #canisters.list == 0 then return end
+    local m = readProp(t, "current_trg")
+    if kindOf(m) ~= "monster" or not isTargetable(m) then return end
+    if readProp(t, "is_awake") == false or readProp(t, "rep_is_trg_visible") == false then return end
+    local mx, my, mz = location(m)
+    if not mx then return end
+    local tr2 = cfg.canisterTriggerRadius ^ 2
+    local best, bd = nil, math.huge
+    for _, e in ipairs(canisters.list) do
+        local d = (e.x - mx) ^ 2 + (e.y - my) ^ 2 + (e.z - mz) ^ 2
+        if d <= tr2 and d < bd then best, bd = e, d end
+    end
+    if not best then return end
+    local c = live(best)
+    if not canisterIsArmedNow(c) then return end
+    local before = readProp(c, "Health")
+    local how = nil
+    local gs = safe(function() return StaticFindObject("/Script/Engine.Default__GameplayStatics") end)
+    if valid(gs) and pcall(function() gs:ApplyDamage(c, cfg.canisterShotDamage, nil, t, nil) end) then
+        how = "ApplyDamage"
+    elseif pcall(function() c:ReceiveAnyDamage(cfg.canisterShotDamage, nil, nil, t) end) then
+        how = "ReceiveAnyDamage"
+    end
+    if not how then count("ERR_canister_hit") return end
+    count("canister_hit")
+    if cfg.verbose and not canHitLogged[best.path] then
+        canHitLogged[best.path] = true
+        log("CANISTER %s hit by %s (shooting %s, %.0f cm away) via %s: health %s -> %s",
+            shortName(c), shortName(t), shortName(m), math.sqrt(bd), how,
+            tostring(before), tostring(readProp(c, "Health")))
+    end
+end
+
+
 -- Right before aiming/shooting: a player target is dropped (ally) / any target (neutral).
 local restoreHookFn = nil   -- set once restoreAllyHits exists (v0.9.6)
 local function preShoot(ctx)
@@ -653,6 +773,14 @@ local function preShoot(ctx)
     if b ~= "ally" or not cfg.ignorePlayers then return end
     purgePlayersFromPotential(t)
     fixPlayerTarget(t, "shoot")
+end
+
+-- v1.1.0: real shots only (Handle_Shoot): also hit an armed canister next to the target
+local function preShootFire(ctx)
+    preShoot(ctx)
+    if not cfg.shootCanisters then return end
+    local t = getSelf(ctx)
+    if behave(t) == "ally" then pcall(canisterShot, t) end
 end
 
 local function logTarget(t)
@@ -671,7 +799,7 @@ local HOOKS = {
     { fn = "AddToAgroTable",          pre = preAddToAgro },
     { fn = "TryToWakeUp",             pre = preTryToWakeUp },
     { fn = "SelectTrg",               pre = preSelectTrg },
-    { fn = "Handle_Shoot (SRV side)", pre = preShoot },
+    { fn = "Handle_Shoot (SRV side)", pre = preShootFire },
     { fn = "CurrentTrg_Handle",       pre = preShoot },
 }
 
@@ -1490,7 +1618,7 @@ local function background()
     local steps = {
         { "hooks", tryRegisterHooks }, { "lists", refreshLists, true },
         { "dmgHooks", tryRegisterDamageHooks }, { "restore", restoreHookFn }, { "allyHits", checkAllyHits },
-        { "phases", updatePhases }, { "settings", applyTurretSettings }, { "wake", wakeTurrets },
+        { "phases", updatePhases }, { "canisters", refreshCanisters }, { "settings", applyTurretSettings }, { "wake", wakeTurrets },
         { "purge", purgeAllPlayers }, { "inject", injectAll }, { "dumpMonsters", dumpMonsters },
         { "dumpDamage", dumpDamageFunctions },
     }
@@ -1632,6 +1760,142 @@ local function inspect()
     log("==== END INSPECT ====")
 end
 
+---------------------------------------------------------------------------
+-- v1.0.1-diag: explosive canisters (Ctrl+F7, read-only, no hook).
+-- Can turrets shoot the explosive canisters? A v0.6.1 log once showed a turret
+-- targeting BP_HoldItem_ExplosiveCanister_Frost_C. This dump lists every hold item
+-- class of the level, then describes the canister classes (parents, properties with
+-- values, ALL functions with parameters) and each canister's surroundings.
+---------------------------------------------------------------------------
+local CANISTER_DUMP_PATH = modDir() .. "\\canister_dump.log"
+local CANISTER_GUESSES = { "BP_HoldItem_ExplosiveCanister_Frost_C", "BP_HoldItem_ExplosiveCanister_Fire_C",
+    "BP_HoldItem_ExplosiveCanister_C", "BP_HoldItem_C", "BP_ParentHoldItem_C", "BP_Parent_HoldItem_C",
+    "BP_HoldItem_Parent_C" }
+local CANISTER_WORDS = { "explos", "canister", "bomb", "barrel", "gas", "fuel", "grenade", "mine" }
+
+local function looksCanister(n)
+    local low = n:lower()
+    for _, w in ipairs(CANISTER_WORDS) do if low:find(w, 1, true) then return true end end
+    return false
+end
+
+local function describeClassFull(f, obj, stopAt)
+    local c, guard = safe(function() return obj:GetClass() end), 0
+    while valid(c) and guard < 12 do
+        local cn = shortName(c)
+        if cn == stopAt then break end
+        f:write("  [", cn, "]\n")
+        pcall(function()
+            c:ForEachProperty(function(prop)
+                local ty = safe(function() return prop:GetClass():GetFName():ToString() end) or "?"
+                local pn = shortName(prop)
+                local sv = ""
+                if SIMPLE[ty] then
+                    local v = readProp(obj, pn)
+                    if type(v) == "userdata" then
+                        sv = valid(v) and shortName(v) or (safe(function() return v:ToString() end) or "None")
+                    else sv = tostring(v) end
+                    sv = " = " .. tostring(sv)
+                end
+                f:write(string.format("    prop %-38s %-16s%s\n", pn, ty, sv))
+            end)
+        end)
+        pcall(function()
+            c:ForEachFunction(function(fn)
+                local params = {}
+                pcall(function()
+                    fn:ForEachProperty(function(prop)
+                        local ty = safe(function() return prop:GetClass():GetFName():ToString() end) or "?"
+                        params[#params + 1] = shortName(prop) .. ":" .. ty
+                    end)
+                end)
+                f:write("    func ", shortName(fn), "(", table.concat(params, ", "), ")\n")
+            end)
+        end)
+        local cur = c
+        c = safe(function() return cur:GetSuperStruct() end)
+        guard = guard + 1
+    end
+end
+
+local function nearestOf(a, list)
+    local best, who = math.huge, nil
+    for _, o in ipairs(list) do
+        local d = dist2(a, o)
+        if d < best then best, who = d, o end
+    end
+    return who, (best < math.huge) and math.sqrt(best) or -1
+end
+
+local function dumpCanisters()
+    refreshLists(true)
+    local f = io.open(CANISTER_DUMP_PATH, "w")
+    if not f then log("CANISTER: cannot write canister_dump.log") return end
+    f:write("AlliedDefense v", VERSION, " canister dump ", os.date("%Y-%m-%d %H:%M:%S"), "\n\n")
+    -- 1) find any known hold item, then its Blueprint parents
+    local parents, seenParent = {}, {}
+    for _, g in ipairs(CANISTER_GUESSES) do
+        local objs = findAll(g)
+        f:write(string.format("guess %-42s : %d\n", g, #objs))
+        if objs[1] then
+            local c, guard = safe(function() return objs[1]:GetClass() end), 0
+            while valid(c) and guard < 12 do
+                local cn = shortName(c)
+                if cn == "Actor" or cn == "Object" then break end
+                if cn:sub(-2) == "_C" and not seenParent[cn] then
+                    seenParent[cn] = true
+                    parents[#parents + 1] = cn
+                end
+                local cur = c
+                c = safe(function() return cur:GetSuperStruct() end)
+                guard = guard + 1
+            end
+        end
+    end
+    f:write("\nBlueprint classes in the chain: ", table.concat(parents, " > "), "\n\n")
+    -- 2) every class under those parents (all hold items of the level)
+    local byClass, order = {}, {}
+    for _, pcn in ipairs(parents) do
+        for _, o in ipairs(findAll(pcn)) do
+            local cn = className(o)
+            if not byClass[cn] then byClass[cn] = {} order[#order + 1] = cn end
+            local list = byClass[cn]
+            local known = false
+            local a = addr(o)
+            for _, e in ipairs(list) do if addr(e) == a then known = true break end end
+            if not known then list[#list + 1] = o end
+        end
+    end
+    table.sort(order)
+    f:write("== Classes found (", #order, ")\n")
+    for _, cn in ipairs(order) do
+        f:write(string.format("  %-50s x%d%s\n", cn, #byClass[cn], looksCanister(cn) and "   <== candidate" or ""))
+    end
+    -- 3) canister classes in detail + every instance's surroundings
+    local players, monsters = liveList(cache.players), monstersNow()
+    local mlist = {}
+    for _, e in ipairs(monsters) do mlist[#mlist + 1] = e.o end
+    local candidates = 0
+    for _, cn in ipairs(order) do
+        if looksCanister(cn) then
+            candidates = candidates + 1
+            f:write("\n==== ", cn, "\n")
+            for _, o in ipairs(byClass[cn]) do
+                local x, y, z = location(o)
+                local p, dp = nearestOf(o, players)
+                local m, dm = nearestOf(o, mlist)
+                local owner = safe(function() return o:GetOwner() end)
+                local parent = safe(function() return o:GetAttachParentActor() end)
+                f:write(string.format("  instance %s pos=(%.0f, %.0f, %.0f) owner=%s attachedTo=%s nearestPlayer=%.0f cm nearestMonster=%s %.0f cm\n",
+                    shortName(o), x or 0, y or 0, z or 0, tag(owner), tag(parent), dp, tag(m), dm))
+            end
+            describeClassFull(f, byClass[cn][1], "Actor")
+        end
+    end
+    f:close()
+    log("CANISTER dump: %d hold item classes, %d canister candidate(s) -> canister_dump.log", #order, candidates)
+end
+
 local function describeMode()
     if cfg.mode ~= "phases" then return cfg.mode end
     return string.format("phases (%s, %s, %d-%d s)",
@@ -1653,6 +1917,8 @@ bind(cfg.modeKey, function()
 end, "mode")
 
 bind(cfg.inspectKey, inspect, "inspect")
+-- developer diagnostic, only with debugLogs = true
+if cfg.debugLogs then bind(cfg.canisterKey, dumpCanisters, "canister dump") end
 
 bind(cfg.verboseKey, function()
     cfg.verbose = not cfg.verbose

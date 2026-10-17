@@ -95,6 +95,7 @@ In vanilla, most monsters are "friends" and players are not. The mod only alters
 | `SelectTrg` | removes players from the aggro table and `potential_trgs`, adds nearby monsters |
 | `Handle_Shoot (SRV side)` / `CurrentTrg_Handle` | a player target is swapped for the nearest monster (or dropped) |
 | `PawnDetectionSphere` overlap events | players never enter the turret sensor |
+| `Handle_Shoot (SRV side)` (1.1.0) | a shot at a visible monster also hits an explosive canister lying next to it |
 | `potential_trgs` map (background loop) | monsters in sensor range are added to it (see below) |
 
 `SelectTrg` only picks targets from the turret's `potential_trgs` map (Actor → `OBJ_SentryTrgData_C`),
@@ -106,6 +107,16 @@ or leaves.
 
 A background loop applies the ally colour, the player wake threshold, and asks sleeping
 turrets to wake up when a monster is in range.
+
+### Explosive canisters (1.1.0)
+
+When an **allied** turret shoots a monster it can see, each shot also hits an explosive
+canister (fire or frost) lying within 4 m of that monster: 2 damage per shot, the canister
+(6 health) explodes on the 3rd shot with its own game effect (fire or freeze).
+A canister is never hit when a player stands within 8 m of it, or while it is carried.
+The turret keeps aiming at the monster: the game's target selection ignores objects, so the
+turret cannot turn towards the canister itself. Settings in `config.lua`: `shootCanisters`,
+`canisterTriggerRadius`, `canisterSafeRadius`, `canisterShotDamage`.
 
 ### Monster notes
 
@@ -135,6 +146,8 @@ AlliedDefense-SpeciesUnknown/
 
 ## Changelog
 
+- **1.1.0** — explosive canisters: an allied turret shooting a visible monster also hits a fire or
+  frost canister lying next to it (no player within 8 m), which explodes after 3 shots.
 - **1.0.0** — first stable release. Tested on full games with BigRobot + drones, Poulpi and
   Michel without crash or freeze. Verbose logs off by default; developer diagnostics
   (hook install, `WAKE`, `TRGDATA`, `PERF` / `SLOW`) moved behind `debugLogs = true`.
@@ -213,6 +226,8 @@ AlliedDefense-SpeciesUnknown/
 - **Multiplayer untested**: turret logic runs on the host, so in theory only the host needs
   the mod; friends playing vanilla should see the same allied turrets.
 - Zombie games: one crash in 0.9.4 (code removed since); not re-tested with 1.0.0.
+- Explosive canisters: the turret keeps aiming at the monster (it cannot select an object as a
+  target); the canister takes the hits of the shots fired at the monster next to it.
 - Every game update may rename classes/functions: if turrets act vanilla again, enable
   `debugLogs = true` and look for `Still N hook(s) not installed` / `Hook not ready yet` lines.
 

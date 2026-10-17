@@ -56,6 +56,14 @@ return {
     protectPlayersFromAllyFire = false,
     restoreHealthFromAllyFire = true, -- give back the health lost to an ALLIED turret bullet (0.1 s later)
     dumpDamageFunctions = false,  -- true: write damage_dump.log once (diagnostic, v0.8.9)
+    -- v1.1.0: explosive canisters (fire / frost). When an allied turret shoots a monster it can
+    -- see, its shots also hit an explosive canister lying next to that monster (it explodes
+    -- after a few shots), unless a player stands in the blast.
+    shootCanisters = true,
+    canisterClass = "BP_HoldItem_ExplosiveCanister_Fire_C",  -- also covers the frost canister (child class)
+    canisterTriggerRadius = 400,   -- a monster must be this close to the canister (cm)
+    canisterSafeRadius = 800,      -- no player within this distance of the canister (cm)
+    canisterShotDamage = 2.0,      -- damage per turret shot (canister health = 6, so 3 shots)
     trgDataClassPath = "/Game/Blueprints/Monsters/SentryGun/OBJ_SentryTrgData.OBJ_SentryTrgData_C",
 
     -- Monsters turrets must NEVER aim at (class names)
@@ -101,6 +109,7 @@ return {
     inspectKey = "F6",        -- dump the state of the turrets closest to a living monster into the log
     inspectCount = 4,         -- number of turrets dumped by the inspector
     verboseKey = "F11",       -- enable / disable verbose logs
+    canisterKey = "F7",       -- diagnostic (only with debugLogs = true): explosive canisters -> canister_dump.log
 
     verbose = false,          -- true: log target changes + stats every 10 s (toggle in game: Ctrl+F11)
     debugLogs = false,        -- true: developer diagnostics (hook install, WAKE, TRGDATA, PERF/SLOW timings)
