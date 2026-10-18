@@ -108,7 +108,7 @@ or leaves.
 A background loop applies the ally colour, the player wake threshold, and asks sleeping
 turrets to wake up when a monster is in range.
 
-### Explosive canisters (1.1.0)
+### Explosive canisters (1.1.0, hostile turrets 1.2.0)
 
 When an **allied** turret shoots a monster it can see, each shot also hits an explosive
 canister (fire or frost) lying within 4 m of that monster: 2 damage per shot, the canister
@@ -117,6 +117,11 @@ A canister is never hit when a player stands within 8 m of it, or while it is ca
 The turret keeps aiming at the monster: the game's target selection ignores objects, so the
 turret cannot turn towards the canister itself. Settings in `config.lua`: `shootCanisters`,
 `canisterTriggerRadius`, `canisterSafeRadius`, `canisterShotDamage`.
+
+A **hostile** turret ("phases" hostile phase, "chaos") does the same with the canister nearest
+to its target, player or monster, **without any safety distance** — including a canister the
+targeted player is carrying. Vanilla mode is untouched. `hostileShootCanisters = false` limits
+the feature to allied turrets.
 
 ### Monster notes
 
@@ -146,6 +151,9 @@ AlliedDefense-SpeciesUnknown/
 
 ## Changelog
 
+- **1.2.0** — hostile turrets ("phases" hostile phase, "chaos") also blow up the canister nearest
+  to their target, player or monster, with no safety distance — even one a player is carrying
+  (`hostileShootCanisters`).
 - **1.1.0** — explosive canisters: an allied turret shooting a visible monster also hits a fire or
   frost canister lying next to it (no player within 8 m), which explodes after 3 shots.
 - **1.0.0** — first stable release. Tested on full games with BigRobot + drones, Poulpi and

@@ -1,4 +1,4 @@
--- AlliedDefense v1.1.0 - Species: Unknown (UE4SS Lua)
+-- AlliedDefense v1.2.0 - Species: Unknown (UE4SS Lua)
 -- Author: Remilulz_91
 --
 -- Ceiling turrets (BP_SentryGun_C) no longer target players and shoot monsters instead.
@@ -35,7 +35,7 @@
 --
 -- Turret logic runs on the host (HasAuthority). In multiplayer, the host needs the mod.
 
-local VERSION = "1.1.0"
+local VERSION = "1.2.0"
 local MOD = "AlliedDefense"
 
 ---------------------------------------------------------------------------
@@ -80,6 +80,7 @@ default("canisterClass", "BP_HoldItem_ExplosiveCanister_Fire_C")
 default("canisterTriggerRadius", 400)
 default("canisterSafeRadius", 800)
 default("canisterShotDamage", 2.0)
+default("hostileShootCanisters", true)
 default("verbose", false)
 default("debugLogs", false)
 default("mode", "phases")
@@ -688,29 +689,29 @@ local function playerNear(x, y, z, r)
     return false
 end
 
--- armed = next to a monster, nobody in the blast, not carried, not exploded
+-- list  = every canister not exploded yet (on the ground OR carried by a player)
+-- armed = the ones an ALLIED turret may hit: on the ground, next to a monster, nobody in the blast
+-- (v1.2.0: a HOSTILE turret - "phases" hostile phase, "chaos" - may hit any of the list,
+--  even one a player is carrying: shooting a player holding a canister blows it up)
 local function refreshCanisters()
     canisters.list, canisters.armed = {}, {}
     if not cfg.enabled or not cfg.shootCanisters then return end
     if cfg.mode == "vanilla" or cfg.mode == "neutral" then return end
     local snap = monstersNow()
-    if #snap == 0 then return end
     local tr2 = cfg.canisterTriggerRadius ^ 2
     for _, c in ipairs(findAll(cfg.canisterClass)) do
-        if canisterArmed(c) then
+        if readProp(c, "HaveExploded") ~= true then
             local x, y, z = location(c)
-            if x then
+            local e = x and entry(c)
+            if e then
+                e.x, e.y, e.z = x, y, z
+                canisters.list[#canisters.list + 1] = e
                 local near = false
                 for _, m in ipairs(snap) do
                     if ((m.x - x) ^ 2 + (m.y - y) ^ 2 + (m.z - z) ^ 2) <= tr2 then near = true break end
                 end
-                if near and not playerNear(x, y, z, cfg.canisterSafeRadius) then
-                    local e = entry(c)
-                    if e then
-                        e.x, e.y, e.z = x, y, z
-                        canisters.list[#canisters.list + 1] = e
-                        canisters.armed[e.path] = true
-                    end
+                if near and canisterArmed(c) and not playerNear(x, y, z, cfg.canisterSafeRadius) then
+                    canisters.armed[e.path] = true
                 end
             end
         end
@@ -725,13 +726,18 @@ canisterIsArmedNow = function(c)
     return x ~= nil and not playerNear(x, y, z, cfg.canisterSafeRadius)
 end
 
--- Each real shot (Handle_Shoot, server side) of an allied turret at a monster it sees:
--- an armed canister within canisterTriggerRadius of that monster takes the bullet damage.
+-- Each real shot (Handle_Shoot, server side) of a turret at a target it sees: the canister
+-- nearest to that target (within canisterTriggerRadius) takes the bullet damage.
+--   allied turret : monster targets only, never with a player in the blast
+--   hostile turret: its target (player or monster), no safety - that is the point
 local canHitLogged = {}
-local function canisterShot(t)
+local function canisterShot(t, hostile)
     if #canisters.list == 0 then return end
     local m = readProp(t, "current_trg")
-    if kindOf(m) ~= "monster" or not isTargetable(m) then return end
+    local k = kindOf(m)
+    if hostile then
+        if k ~= "monster" and k ~= "player" then return end
+    elseif k ~= "monster" or not isTargetable(m) then return end
     if readProp(t, "is_awake") == false or readProp(t, "rep_is_trg_visible") == false then return end
     local mx, my, mz = location(m)
     if not mx then return end
@@ -743,7 +749,9 @@ local function canisterShot(t)
     end
     if not best then return end
     local c = live(best)
-    if not canisterIsArmedNow(c) then return end
+    if hostile then
+        if not valid(c) or readProp(c, "HaveExploded") == true then return end
+    elseif not canisterIsArmedNow(c) then return end
     local before = readProp(c, "Health")
     local how = nil
     local gs = safe(function() return StaticFindObject("/Script/Engine.Default__GameplayStatics") end)
@@ -753,11 +761,11 @@ local function canisterShot(t)
         how = "ReceiveAnyDamage"
     end
     if not how then count("ERR_canister_hit") return end
-    count("canister_hit")
+    count(hostile and "canister_hit_hostile" or "canister_hit")
     if cfg.verbose and not canHitLogged[best.path] then
         canHitLogged[best.path] = true
-        log("CANISTER %s hit by %s (shooting %s, %.0f cm away) via %s: health %s -> %s",
-            shortName(c), shortName(t), shortName(m), math.sqrt(bd), how,
+        log("CANISTER %s hit by %s %s (shooting %s, %.0f cm away) via %s: health %s -> %s",
+            shortName(c), hostile and "HOSTILE" or "allied", shortName(t), shortName(m), math.sqrt(bd), how,
             tostring(before), tostring(readProp(c, "Health")))
     end
 end
@@ -780,7 +788,12 @@ local function preShootFire(ctx)
     preShoot(ctx)
     if not cfg.shootCanisters then return end
     local t = getSelf(ctx)
-    if behave(t) == "ally" then pcall(canisterShot, t) end
+    if not valid(t) or not hasAuthority(t) or not cfg.enabled then return end
+    local b = behave(t)
+    if b == "ally" then pcall(canisterShot, t, false)
+    elseif cfg.hostileShootCanisters and (b == "chaos" or (b == nil and cfg.mode == "phases")) then
+        pcall(canisterShot, t, true)
+    end
 end
 
 local function logTarget(t)

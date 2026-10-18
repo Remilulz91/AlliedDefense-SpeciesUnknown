@@ -64,6 +64,8 @@ return {
     canisterTriggerRadius = 400,   -- a monster must be this close to the canister (cm)
     canisterSafeRadius = 800,      -- no player within this distance of the canister (cm)
     canisterShotDamage = 2.0,      -- damage per turret shot (canister health = 6, so 3 shots)
+    hostileShootCanisters = true,  -- v1.2.0: a HOSTILE turret (phases hostile phase, chaos) also blows up the canister
+                                   -- nearest to its target - player or monster, no safety distance
     trgDataClassPath = "/Game/Blueprints/Monsters/SentryGun/OBJ_SentryTrgData.OBJ_SentryTrgData_C",
 
     -- Monsters turrets must NEVER aim at (class names)
