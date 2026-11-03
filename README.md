@@ -18,7 +18,8 @@ never shoot players anymore and fight the specimens instead.
   plus the UE5.7 signature file from Nexus ("UE4SS Signatures for Species Unknown").
 - Mods are loaded through their `enabled.txt` file — no need to edit `mods.txt`.
 - Installing any mod locks public lobbies (game rule since 0.25): solo / private games only.
-- Multiplayer: turret logic runs on the **host**, so the host needs the mod.
+- Multiplayer: turret logic runs on the **host**, so **only the host needs the mod** (tested: friends
+  without the mod see the same allied / hostile turrets).
 
 ## Install
 
@@ -231,8 +232,8 @@ AlliedDefense-SpeciesUnknown/
   protection (`protectPlayersFromAllyFire`) is experimental and **off**: every working version
   (0.9.4–0.9.6) crashed the game. Do not enable it in a real game.
 - The Eye is not targeted while shielded, the ghost only while frozen (bullets are blocked).
-- **Multiplayer untested**: turret logic runs on the host, so in theory only the host needs
-  the mod; friends playing vanilla should see the same allied turrets.
+- **Multiplayer**: tested in a private hosted game with friends playing **without** the mod
+  (v1.2.0, ~5 h, several missions): no bug, no crash. Only the host needs the mod.
 - Zombie games: one crash in 0.9.4 (code removed since); not re-tested with 1.0.0.
 - Explosive canisters: the turret keeps aiming at the monster (it cannot select an object as a
   target); the canister takes the hits of the shots fired at the monster next to it.
