@@ -88,13 +88,13 @@ return {
     -- The turret's presence sensor ignores players
     hidePlayersFromSensor = true,
 
-    -- Turret "alert/fire" colour while the mod is enabled (red in vanilla).
-    -- nil = game colour. R,G,B values between 0 and 1. Examples:
-    --   green { R = 0.0, G = 1.0, B = 0.2, A = 1.0 }
-    --   blue  { R = 0.1, G = 0.4, B = 1.0, A = 1.0 }
-    allyFireColor = { R = 0.1, G = 0.4, B = 1.0, A = 1.0 },
-    -- Colour in "chaos" mode (nil = game red). Example purple: { R = 0.6, G = 0.0, B = 1.0, A = 1.0 }
-    chaosFireColor = nil,
+    -- Turret colours while the mod is enabled (v1.3.0: one colour per state). R,G,B,A between 0 and 1,
+    -- false = game colour. In "phases" (hidden) the fire colour is the same in both phases.
+    searchColor    = { R = 1.0, G = 0.55, B = 0.0, A = 1.0 },  -- amber: no target, scanning (game: green)
+    allyFireColor  = { R = 0.0, G = 1.0, B = 0.2, A = 1.0 },   -- green: allied turret shooting monsters
+    chaosFireColor = { R = 0.6, G = 0.0, B = 1.0, A = 1.0 },   -- purple: "chaos", shoots everybody
+    neutralColor   = { R = 0.8, G = 0.8, B = 0.8, A = 1.0 },   -- grey: "neutral", shoots nobody
+    -- hostile phase revealed (revealPhase = true): game red
 
     -- Describe each monster class once in monsters_dump.log
     dumpMonsterClasses = false,

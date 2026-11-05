@@ -109,6 +109,23 @@ or leaves.
 A background loop applies the ally colour, the player wake threshold, and asks sleeping
 turrets to wake up when a monster is in range.
 
+### Turret colours (1.3.0)
+
+| Turret state | Colour |
+|---|---|
+| No target, scanning | amber |
+| Allied, shooting a monster | green |
+| `phases` (hidden), hostile phase shooting a player | green too — the secret is kept |
+| `chaos` | purple |
+| `neutral` | grey |
+| `vanilla` / mod disabled | game colours (green scanning, red firing) |
+
+The firing colour is only shown while the turret really has a target, so a turret opening
+(it opens because it saw a player, the mod then drops the player) stays amber.
+Colours are set in `config.lua` (`searchColor`, `allyFireColor`, `chaosFireColor`,
+`neutralColor`; `false` = game colour). An old `config.lua` still holding the former blue
+ally colour is converted to the new green automatically.
+
 ### Explosive canisters (1.1.0, hostile turrets 1.2.0)
 
 When an **allied** turret shoots a monster it can see, each shot also hits an explosive
@@ -152,6 +169,10 @@ AlliedDefense-SpeciesUnknown/
 
 ## Changelog
 
+- **1.3.0** — one colour per turret state (a friend's feedback: the game's green "scanning"
+  light looked like "allied"): amber scanning, green allied, purple chaos, grey neutral;
+  in hidden `phases` a hostile turret shoots in green too. The firing colour only shows while
+  the turret has a real target (no more blue/green flash when a turret opens).
 - **1.2.0** — hostile turrets ("phases" hostile phase, "chaos") also blow up the canister nearest
   to their target, player or monster, with no safety distance — even one a player is carrying
   (`hostileShootCanisters`).

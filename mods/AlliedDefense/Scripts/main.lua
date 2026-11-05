@@ -1,4 +1,4 @@
--- AlliedDefense v1.2.0 - Species: Unknown (UE4SS Lua)
+-- AlliedDefense v1.3.0 - Species: Unknown (UE4SS Lua)
 -- Author: Remilulz_91
 --
 -- Ceiling turrets (BP_SentryGun_C) no longer target players and shoot monsters instead.
@@ -35,7 +35,7 @@
 --
 -- Turret logic runs on the host (HasAuthority). In multiplayer, the host needs the mod.
 
-local VERSION = "1.2.0"
+local VERSION = "1.3.0"
 local MOD = "AlliedDefense"
 
 ---------------------------------------------------------------------------
@@ -67,7 +67,14 @@ default("hidePlayersFromSensor", true)
 default("retargetToMonster", false)
 default("targetUnlessTrue", { BP_Monster_Eye_C = "HaveShield" })
 default("purgePotentialTargets", true)
-default("allyFireColor", nil)
+default("allyFireColor", { R = 0.0, G = 1.0, B = 0.2, A = 1.0 })
+-- v1.3.0: an old config.lua (<= 1.2.0) still holds the former blue default -> new green
+do
+    local c = cfg.allyFireColor
+    if type(c) == "table" and c.R == 0.1 and c.G == 0.4 and c.B == 1.0 then
+        cfg.allyFireColor = { R = 0.0, G = 1.0, B = 0.2, A = 1.0 }
+    end
+end
 default("dumpMonsterClasses", false)
 default("listRefreshSeconds", 0.5)
 default("backgroundIntervalMs", 1000)
@@ -91,7 +98,9 @@ default("phaseMinSeconds", 120)
 default("phaseMaxSeconds", 300)
 default("phaseStart", "random")
 default("revealPhase", false)
-default("chaosFireColor", nil)
+default("chaosFireColor", { R = 0.6, G = 0.0, B = 1.0, A = 1.0 })
+default("searchColor", { R = 1.0, G = 0.55, B = 0.0, A = 1.0 })
+default("neutralColor", { R = 0.8, G = 0.8, B = 0.8, A = 1.0 })
 default("inspectKey", "F6")
 default("inspectCount", 4)
 default("injectPotentialTargets", true)
@@ -773,7 +782,8 @@ end
 
 -- Right before aiming/shooting: a player target is dropped (ally) / any target (neutral).
 local restoreHookFn = nil   -- set once restoreAllyHits exists (v0.9.6)
-local function preShoot(ctx)
+local colorHookFn = nil     -- set once applyColor exists (v1.3.0)
+local function preShootInner(ctx)
     if restoreHookFn then pcall(restoreHookFn) end
     local t = getSelf(ctx)
     local b = behave(t)
@@ -781,6 +791,15 @@ local function preShoot(ctx)
     if b ~= "ally" or not cfg.ignorePlayers then return end
     purgePlayersFromPotential(t)
     fixPlayerTarget(t, "shoot")
+end
+
+-- v1.3.0: colours follow the target right away (not only on the 1 s background tick)
+local function preShoot(ctx)
+    preShootInner(ctx)
+    if colorHookFn then
+        local t = getSelf(ctx)
+        if valid(t) then pcall(colorHookFn, t, shortName(t)) end
+    end
 end
 
 -- v1.1.0: real shots only (Handle_Shoot): also hit an armed canister next to the target
@@ -1206,13 +1225,19 @@ local function injectAll()
     end
 end
 
--- Ally colour + player wake threshold: applied while enabled, restored when disabled.
+-- Turret colours + player wake threshold: applied while enabled, restored when disabled.
+-- v1.3.0: one colour per state (a friend's feedback: the game's green "searching" light
+-- looked like "allied"). Two turret properties:
+--   search_color : no target, scanning   -> searchColor (amber), neutral -> neutralColor
+--   fire_color   : aiming / shooting     -> ally green, chaos purple, neutral grey,
+--                                           revealed hostile phase: game red
+-- "phases" hidden: the SAME fire colour (green) in both phases, as before (secret kept).
 local origThreshold = {}
-local origColor = {}
-local colorErr = false
+local origColor = { fire_color = {}, search_color = {} }
+local colorErr = {}
 
-local function readColor(t)
-    local c = readProp(t, "fire_color")
+local function readColor(t, prop)
+    local c = readProp(t, prop)
     if c == nil then return nil end
     local r, g, b, a = safe(function() return c.R end), safe(function() return c.G end),
                        safe(function() return c.B end), safe(function() return c.A end)
@@ -1224,35 +1249,51 @@ local function sameColor(x, y)
     return x and y and math.abs(x.R - y.R) < 1e-3 and math.abs(x.G - y.G) < 1e-3 and math.abs(x.B - y.B) < 1e-3
 end
 
-local function writeColor(t, c)
-    local ok, err = pcall(function() t.fire_color = { R = c.R, G = c.G, B = c.B, A = c.A or 1.0 } end)
-    if not ok and not colorErr then colorErr = true logErr("fire_color", err) end
+local function writeColor(t, prop, c)
+    local ok, err = pcall(function() t[prop] = { R = c.R, G = c.G, B = c.B, A = c.A or 1.0 } end)
+    if not ok and not colorErr[prop] then colorErr[prop] = true logErr(prop, err) end
 end
 
--- Colour wanted for a turret (nil = game colour).
-local function wantedColor(t)
-    if not cfg.enabled or cfg.mode == "vanilla" then return nil end
-    if cfg.mode == "phases" and not cfg.revealPhase then return cfg.allyFireColor end
+-- Colours wanted for a turret (nil/false = game colour): fire, search
+-- test2: the fire colour is only shown while the turret really has a target (an allied
+-- turret: a monster). Otherwise fire_color = search colour, so the short "alert" flash of a
+-- turret opening (it opens because it saw a player, the mod then drops the player) stays amber.
+local function wantedColors(t)
+    if not cfg.enabled or cfg.mode == "vanilla" then return nil, nil end
     local b = behaviourOf(t)
-    if b == "ally" or b == "neutral" then return cfg.allyFireColor end
-    if b == "chaos" then return cfg.chaosFireColor end
-    return nil   -- revealed hostile phase: game colour (red)
+    if b == "neutral" then return cfg.neutralColor, cfg.neutralColor end
+    local fire
+    if cfg.mode == "phases" and not cfg.revealPhase then fire = cfg.allyFireColor
+    elseif b == "ally" then fire = cfg.allyFireColor
+    elseif b == "chaos" then fire = cfg.chaosFireColor
+    else fire = nil end   -- revealed hostile phase: game red when shooting
+    local k = kindOf(readProp(t, "current_trg"))
+    local hasTarget = (k == "monster") or (k == "player" and b ~= "ally")
+    if not hasTarget and cfg.searchColor then fire = cfg.searchColor end
+    return fire, cfg.searchColor
+end
+
+local function applyOne(t, name, prop, want)
+    local cur = readColor(t, prop)
+    if not cur then return end
+    local orig = origColor[prop]
+    if want then
+        if not sameColor(cur, want) then
+            if orig[name] == nil then orig[name] = cur end
+            writeColor(t, prop, want)
+        end
+    elseif orig[name] ~= nil then
+        writeColor(t, prop, orig[name])
+        orig[name] = nil
+    end
 end
 
 local function applyColor(t, name)
-    local want = wantedColor(t)
-    local cur = readColor(t)
-    if not cur then return end
-    if want then
-        if not sameColor(cur, want) then
-            if origColor[name] == nil then origColor[name] = cur end
-            writeColor(t, want)
-        end
-    elseif origColor[name] ~= nil then
-        writeColor(t, origColor[name])
-        origColor[name] = nil
-    end
+    local fire, search = wantedColors(t)
+    applyOne(t, name, "fire_color", fire)
+    applyOne(t, name, "search_color", search)
 end
+colorHookFn = applyColor
 
 local function applyTurretSettings()
     for _, t in ipairs(findAll(cfg.turretClass)) do
