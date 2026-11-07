@@ -1,4 +1,4 @@
--- AlliedDefense v1.3.0 - Species: Unknown (UE4SS Lua)
+-- AlliedDefense v1.3.1 - Species: Unknown (UE4SS Lua)
 -- Author: Remilulz_91
 --
 -- Ceiling turrets (BP_SentryGun_C) no longer target players and shoot monsters instead.
@@ -35,7 +35,7 @@
 --
 -- Turret logic runs on the host (HasAuthority). In multiplayer, the host needs the mod.
 
-local VERSION = "1.3.0"
+local VERSION = "1.3.1"
 local MOD = "AlliedDefense"
 
 ---------------------------------------------------------------------------
@@ -1267,9 +1267,13 @@ local function wantedColors(t)
     elseif b == "ally" then fire = cfg.allyFireColor
     elseif b == "chaos" then fire = cfg.chaosFireColor
     else fire = nil end   -- revealed hostile phase: game red when shooting
-    local k = kindOf(readProp(t, "current_trg"))
-    local hasTarget = (k == "monster") or (k == "player" and b ~= "ally")
-    if not hasTarget and cfg.searchColor then fire = cfg.searchColor end
+    -- host only: on a client the turret's target is not known (not replicated), so the
+    -- client keeps the fire colour and lets the game switch between search / fire itself
+    if hasAuthority(t) then
+        local k = kindOf(readProp(t, "current_trg"))
+        local hasTarget = (k == "monster") or (k == "player" and b ~= "ally")
+        if not hasTarget and cfg.searchColor then fire = cfg.searchColor end
+    end
     return fire, cfg.searchColor
 end
 
@@ -1299,6 +1303,7 @@ local function applyTurretSettings()
     for _, t in ipairs(findAll(cfg.turretClass)) do
         local name = shortName(t)
         pcall(applyColor, t, name)
+        if not hasAuthority(t) then goto continue end   -- client: colours only
         local b = behaviourOf(t)
         local block = cfg.blockPlayerWake and (b == "ally" or b == "neutral")
         local cur = readProp(t, "player_wakeup_threshold")
@@ -1314,6 +1319,7 @@ local function applyTurretSettings()
                 origThreshold[name] = nil
             end
         end
+        ::continue::
     end
 end
 
@@ -1668,7 +1674,29 @@ local function flushPerf()
     perf.parts = {}
 end
 
+-- v1.3.1: colours are NOT replicated (each PC draws its own turret lights), so a friend
+-- who joins with the mod installed runs it in "client" mode: colours only, no gameplay
+-- (targets, wake-ups, injection, canisters stay the host's job).
+local clientState = { is = false, logged = nil }
+local function amClient()
+    local t = findAll(cfg.turretClass)[1]
+    local c = valid(t) and not hasAuthority(t) or false
+    if c ~= clientState.logged then
+        clientState.logged = c
+        if c then log("CLIENT: joined someone else's game -> colours only (the host's mod handles the turrets)") end
+    end
+    return c
+end
+
 local function background()
+    local client = false
+    pcall(function() client = amClient() end)
+    if client then
+        pcall(refreshLists, true)
+        pcall(applyTurretSettings)
+        flushStats(false)
+        return
+    end
     local steps = {
         { "hooks", tryRegisterHooks }, { "lists", refreshLists, true },
         { "dmgHooks", tryRegisterDamageHooks }, { "restore", restoreHookFn }, { "allyHits", checkAllyHits },

@@ -126,6 +126,11 @@ Colours are set in `config.lua` (`searchColor`, `allyFireColor`, `chaosFireColor
 `neutralColor`; `false` = game colour). An old `config.lua` still holding the former blue
 ally colour is converted to the new green automatically.
 
+**Multiplayer:** turret colours are local to each PC (not replicated). Friends see the mod's
+colours only if they install the mod too; it then runs in "client" mode (colours only, the
+host's mod drives the turrets). Each PC uses the mode set on it: keep the default `phases` for
+matching colours. Friends without the mod see the game colours (green / red).
+
 ### Explosive canisters (1.1.0, hostile turrets 1.2.0)
 
 When an **allied** turret shoots a monster it can see, each shot also hits an explosive
@@ -169,6 +174,10 @@ AlliedDefense-SpeciesUnknown/
 
 ## Changelog
 
+- **1.3.1** — turret colours in multiplayer: colours are drawn by each PC and never sent over the
+  network, so friends without the mod see the game colours. A player who joins with the mod now
+  runs it in "client" mode (log line `CLIENT: joined someone else's game -> colours only`): colours
+  only, the turrets stay driven by the host's mod.
 - **1.3.0** — one colour per turret state (a friend's feedback: the game's green "scanning"
   light looked like "allied"): amber scanning, green allied, purple chaos, grey neutral;
   in hidden `phases` a hostile turret shoots in green too. The firing colour only shows while
