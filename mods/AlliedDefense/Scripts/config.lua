@@ -56,6 +56,10 @@ return {
     protectPlayersFromAllyFire = false,
     restoreHealthFromAllyFire = true, -- give back the health lost to an ALLIED turret bullet (0.1 s later)
     dumpDamageFunctions = false,  -- true: write damage_dump.log once (diagnostic, v0.8.9)
+    -- v1.3.3: an allied turret frozen after its player target was dropped (no new target
+    -- within stuckSeconds) is closed into the ceiling; it reopens normally later.
+    unstickTurrets = true,
+    stuckSeconds = 6,
     -- v1.1.0: explosive canisters (fire / frost). When an allied turret shoots a monster it can
     -- see, its shots also hit an explosive canister lying next to that monster (it explodes
     -- after a few shots), unless a player stands in the blast.
@@ -108,6 +112,7 @@ return {
     modifier = "CONTROL",
     toggleKey = "F10",        -- enable / disable the mod
     modeKey = "F9",           -- next mode (see modeCycle)
+    defaultModeKey = "F8",    -- back to the startup mode ("mode" above, phases by default)
     inspectKey = "F6",        -- dump the state of the turrets closest to a living monster into the log
     inspectCount = 4,         -- number of turrets dumped by the inspector
     verboseKey = "F11",       -- enable / disable verbose logs

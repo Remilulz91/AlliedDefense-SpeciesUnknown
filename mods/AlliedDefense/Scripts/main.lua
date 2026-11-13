@@ -1,4 +1,4 @@
--- AlliedDefense v1.3.1 - Species: Unknown (UE4SS Lua)
+-- AlliedDefense v1.3.4 - Species: Unknown (UE4SS Lua)
 -- Author: Remilulz_91
 --
 -- Ceiling turrets (BP_SentryGun_C) no longer target players and shoot monsters instead.
@@ -35,7 +35,7 @@
 --
 -- Turret logic runs on the host (HasAuthority). In multiplayer, the host needs the mod.
 
-local VERSION = "1.3.1"
+local VERSION = "1.3.4"
 local MOD = "AlliedDefense"
 
 ---------------------------------------------------------------------------
@@ -92,6 +92,9 @@ default("verbose", false)
 default("debugLogs", false)
 default("mode", "phases")
 default("modeKey", "F9")
+default("defaultModeKey", "F8")
+default("unstickTurrets", true)
+default("stuckSeconds", 6)
 default("modeCycle", { "phases", "ally", "chaos", "neutral", "vanilla" })
 default("phasePerTurret", false)
 default("phaseMinSeconds", 120)
@@ -373,6 +376,7 @@ math.randomseed(os.time())
 
 local VALID_MODES = { ally = true, vanilla = true, neutral = true, chaos = true, phases = true }
 if not VALID_MODES[cfg.mode] then cfg.mode = "phases" end
+local STARTUP_MODE = cfg.mode   -- v1.3.2: Ctrl+F8 comes back to it
 
 local phase = { global = nil, globalUntil = 0, turrets = {} }
 
@@ -508,6 +512,13 @@ local function logPlayerTarget(t, name, where, newTarget)
     end
 end
 
+-- v1.3.3: a turret whose player target was dropped normally re-selects a target
+-- (SelectTrg) within ~1 s. Sometimes it does not: it stays out, frozen, servo sound looping,
+-- until the next phase lets it shoot the player again (BigRobot game, 08/11, turret ...530
+-- frozen 20:07:48 -> 20:11:02). We remember the drop; SelectTrg clears it; the background
+-- tick closes a turret still waiting after stuckSeconds (it reopens normally later).
+local stuck = {}   -- turret name -> { e = entry, at = os.clock() }
+
 -- If the current target is a player, swap it for the nearest monster (or drop it).
 local function fixPlayerTarget(t, where)
     local cur = readProp(t, "current_trg")
@@ -524,6 +535,10 @@ local function fixPlayerTarget(t, where)
     else
         ok = pcall(function() t.current_trg = nil end)
         count(ok and ("player_target_dropped_" .. where) or "ERR_drop_target")
+        if ok and not stuck[name] then
+            local e = entry(t)
+            if e then stuck[name] = { e = e, at = os.clock() } end
+        end
     end
     -- v0.9.5: probePotentialTargets (v0.7 diagnostic) removed from here. It walked EVERY key
     -- of potential_trgs and read its class; a zombie being destroyed in that map crashed
@@ -874,7 +889,11 @@ local function installHook(spec)
     local perfName = "hook:" .. (spec.fn:find("PawnDetectionSphere", 1, true) and "Sensor" or spec.fn)
     local ok, pre, post = pcall(RegisterHook, path, function(ctx, ...)
         timed(perfName, fn, ctx, ...)
-        if spec.fn == "SelectTrg" then pcall(logTarget, getSelf(ctx)) end
+        if spec.fn == "SelectTrg" then
+            local st = getSelf(ctx)
+            if valid(st) then stuck[shortName(st)] = nil end
+            pcall(logTarget, st)
+        end
     end)
     if ok then
         hookState.list[#hookState.list + 1] = { path = path, pre = pre, post = post }
@@ -1279,23 +1298,38 @@ end
 
 local function applyOne(t, name, prop, want)
     local cur = readColor(t, prop)
-    if not cur then return end
+    if not cur then return false end
     local orig = origColor[prop]
     if want then
         if not sameColor(cur, want) then
             if orig[name] == nil then orig[name] = cur end
             writeColor(t, prop, want)
+            return true
         end
     elseif orig[name] ~= nil then
         writeColor(t, prop, orig[name])
         orig[name] = nil
+        return true
     end
+    return false
+end
+
+-- v1.3.2: the turret only reads fire_color / search_color when its light switches state
+-- (Switch_RangLightColor timeline). A new colour therefore showed up only at the next
+-- detection (and never on a client until then). Re-running the timeline's update applies
+-- the current colours right away, at the light's current search <-> fire blend.
+local refreshErr = false
+local function refreshLight(t)
+    local ok, err = pcall(function() t:Switch_RangLightColor__UpdateFunc() end)
+    if ok then count("light_refreshed")
+    elseif not refreshErr then refreshErr = true logErr("light refresh", err) end
 end
 
 local function applyColor(t, name)
     local fire, search = wantedColors(t)
-    applyOne(t, name, "fire_color", fire)
-    applyOne(t, name, "search_color", search)
+    local a = applyOne(t, name, "fire_color", fire)
+    local b = applyOne(t, name, "search_color", search)
+    if a or b then refreshLight(t) end
 end
 colorHookFn = applyColor
 
@@ -1331,6 +1365,15 @@ end
 local function updatePhases()
     if not cfg.enabled or cfg.mode ~= "phases" then return end
     local now = os.time()
+    -- v1.3.4: no turret in this level (lobby, menu, mission without the Sentry Turrets
+    -- modifier): the phase clock is paused and restarts from scratch with the next turrets
+    if #findAll(cfg.turretClass) == 0 then
+        if phase.global ~= nil or next(phase.turrets) ~= nil then
+            phase.global, phase.turrets = nil, {}
+            log("PHASE paused: no turret in this level")
+        end
+        return
+    end
     if not cfg.phasePerTurret then
         if phase.global == nil then phaseOf(nil) end
         if now >= phase.globalUntil then
@@ -1688,6 +1731,27 @@ local function amClient()
     return c
 end
 
+local function unstickTurrets()
+    if not cfg.enabled or not cfg.unstickTurrets then stuck = {} return end
+    local now = os.clock()
+    for name, st in pairs(stuck) do
+        if (now - st.at) >= cfg.stuckSeconds then
+            stuck[name] = nil
+            local t = live(st.e)
+            if valid(t) and behave(t) == "ally" and not valid(readProp(t, "current_trg"))
+               and readProp(t, "is_awake") ~= false then
+                if pcall(function() t:Close() end) then
+                    count("turret_unstuck")
+                    log("UNSTUCK %s: no new target %.0f s after its player target was dropped -> closed",
+                        name, now - st.at)
+                else
+                    count("ERR_unstick")
+                end
+            end
+        end
+    end
+end
+
 local function background()
     local client = false
     pcall(function() client = amClient() end)
@@ -1700,7 +1764,7 @@ local function background()
     local steps = {
         { "hooks", tryRegisterHooks }, { "lists", refreshLists, true },
         { "dmgHooks", tryRegisterDamageHooks }, { "restore", restoreHookFn }, { "allyHits", checkAllyHits },
-        { "phases", updatePhases }, { "canisters", refreshCanisters }, { "settings", applyTurretSettings }, { "wake", wakeTurrets },
+        { "phases", updatePhases }, { "canisters", refreshCanisters }, { "unstick", unstickTurrets }, { "settings", applyTurretSettings }, { "wake", wakeTurrets },
         { "purge", purgeAllPlayers }, { "inject", injectAll }, { "dumpMonsters", dumpMonsters },
         { "dumpDamage", dumpDamageFunctions },
     }
@@ -1998,6 +2062,16 @@ bind(cfg.modeKey, function()
     log("MODE -> %s", describeMode())
 end, "mode")
 
+-- v1.3.2: straight back to the startup mode (phases by default) without cycling
+bind(cfg.defaultModeKey, function()
+    if cfg.mode == STARTUP_MODE then log("MODE already %s", describeMode()) return end
+    cfg.mode = STARTUP_MODE
+    phase.global, phase.turrets = nil, {}
+    lastTrg = {}
+    flushStats(true)
+    log("MODE -> %s (default)", describeMode())
+end, "default mode")
+
 bind(cfg.inspectKey, inspect, "inspect")
 -- developer diagnostic, only with debugLogs = true
 if cfg.debugLogs then bind(cfg.canisterKey, dumpCanisters, "canister dump") end
@@ -2008,6 +2082,6 @@ bind(cfg.verboseKey, function()
 end, "verbose")
 
 local prefix = cfg.modifier and (cfg.modifier .. "+") or ""
-log("AlliedDefense v%s loaded (%s, mode %s). %s%s = on/off, %s%s = next mode, %s%s = inspect, %s%s = verbose logs. Log: %s",
+log("AlliedDefense v%s loaded (%s, mode %s). %s%s = on/off, %s%s = next mode, %s%s = default mode, %s%s = inspect, %s%s = verbose logs. Log: %s",
     VERSION, cfg.enabled and "enabled" or "disabled", describeMode(),
-    prefix, cfg.toggleKey, prefix, cfg.modeKey, prefix, cfg.inspectKey, prefix, cfg.verboseKey, LOG_PATH)
+    prefix, cfg.toggleKey, prefix, cfg.modeKey, prefix, cfg.defaultModeKey, prefix, cfg.inspectKey, prefix, cfg.verboseKey, LOG_PATH)

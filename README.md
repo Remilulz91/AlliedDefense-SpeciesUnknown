@@ -55,6 +55,7 @@ Check: the first line of `mods\AlliedDefense\AlliedDefense.log` must show the ex
 |---|---|
 | **Ctrl+F6** | Inspector: dumps the state of the turrets closest to a monster into the log |
 | **Ctrl+F9** | Next mode: phases → ally → chaos → neutral → vanilla |
+| **Ctrl+F8** | Back to the startup mode (phases by default) |
 | **Ctrl+F10** | Enable / disable the mod (compare with vanilla) |
 | **Ctrl+F11** | Verbose logs on / off (target changes + stats every 10 s; off by default) |
 
@@ -174,6 +175,12 @@ AlliedDefense-SpeciesUnknown/
 
 ## Changelog
 
+- **1.3.4** — the phase clock pauses when the level has no turret (menu, lobby, mission without
+  the Sentry Turrets modifier) and restarts with the next turrets.
+  An allied turret frozen after its player target was dropped (no new target within 6 s) is
+  closed into the ceiling (`UNSTUCK` log line, `unstickTurrets`, `stuckSeconds`).
+  New colours show at once (the turret light is refreshed, also for friends in client mode).
+  Ctrl+F8: back to the startup mode.
 - **1.3.1** — turret colours in multiplayer: colours are drawn by each PC and never sent over the
   network, so friends without the mod see the game colours. A player who joins with the mod now
   runs it in "client" mode (log line `CLIENT: joined someone else's game -> colours only`): colours
