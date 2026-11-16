@@ -49,7 +49,30 @@ tools\install.bat
 
 Check: the first line of `mods\AlliedDefense\AlliedDefense.log` must show the expected version.
 
+## Settings (Personal Board, 1.4.0)
+
+In the lobby, open the **Personal Board** → **SHOP**: an **ALLIED DEFENSE** section lists the
+mod's settings (on every SHOP page). Click a setting once to select it (its description shows on
+the right), click it again to change its value. Choices are saved at once in
+`ue4ss\Mods\AlliedDefense\settings.txt` (kept across games and mod updates; delete it to go back
+to the `config.lua` values) and apply to the next mission.
+
+| Setting | Values |
+|---|---|
+| Allied Defense | Phases → Ally → Chaos → Neutral → Vanilla (see Modes) |
+| Turret lights | Hidden (same colour in both phases) / Revealed (red when hostile + beep) |
+| Phase length | Short (1–2 min) / Normal (2–5 min) / Long (5–10 min) |
+| Phase sync | All turrets switch together / Each turret on its own |
+| Explosive canisters | On / Off: allied turrets blow up canisters next to monsters |
+| Hostile canisters | On / Off: hostile turrets blow up canisters next to their target |
+| Turret colours | Mod (amber / green / purple / grey) / Game (green / red) |
+
+The Board is only an interface: if a game update breaks it, the mod keeps working with the
+saved settings (`boardSettings = false` in `config.lua` hides it).
+
 ## Keys
+
+Optional: everything above is set on the Board. These keys remain for testing and troubleshooting.
 
 | Key | Action |
 |---|---|
@@ -80,7 +103,7 @@ or revealed (red when hostile + a beep on change).
 
 Idea for `phases`: a friend's suggestion — "neither fully allied nor fully hostile".
 A real new mission modifier in the contract menu would need Unreal Editor asset changes,
-so the mode is selected through the config / Ctrl+F9 instead.
+so the mode is selected on the Personal Board instead (or `config.lua` / Ctrl+F9).
 
 ## How it works
 
@@ -167,7 +190,8 @@ AlliedDefense-SpeciesUnknown/
 ├── mods/
 │   ├── AlliedDefense/              <- the mod
 │   │   ├── enabled.txt
-│   │   └── Scripts/ main.lua, config.lua
+│   │   ├── Scripts/ main.lua, config.lua
+│   │   └── art/ AlliedDefense_icon.png   <- picture shown on the Board
 ├── archive/AlliedDefenseDiag/      <- diagnostic tool used to reverse the turret (not installed;
 │                                      its Ctrl+F5..F9 hooks crashed the game alongside the mod)
 └── tools/                          <- install / install-dev / uninstall / find-mods (.bat)
@@ -175,6 +199,11 @@ AlliedDefense-SpeciesUnknown/
 
 ## Changelog
 
+- **1.4.0** — settings on the lobby's Personal Board: an ALLIED DEFENSE section in the SHOP lists
+  mode, turret lights, phase length, phase sync, explosive canisters, hostile canisters and turret
+  colours, each with a description and the mod's picture. Choices are saved in `settings.txt`
+  and win over `config.lua`; Ctrl+F8 goes back to the saved mode.
+  If the Board cannot be modified, the mod keeps running with the saved settings.
 - **1.3.4** — the phase clock pauses when the level has no turret (menu, lobby, mission without
   the Sentry Turrets modifier) and restarts with the next turrets.
   An allied turret frozen after its player target was dropped (no new target within 6 s) is

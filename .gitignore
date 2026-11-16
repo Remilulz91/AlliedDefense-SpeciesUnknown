@@ -1,5 +1,8 @@
 # Logs du diagnostic
 *.log
 
+# Board settings written by the mod (player choices, not versioned)
+mods/AlliedDefense/settings.txt
+
 # Release archives (uploaded to GitHub Releases, not versioned)
 release/

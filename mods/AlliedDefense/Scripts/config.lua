@@ -113,6 +113,9 @@ return {
     toggleKey = "F10",        -- enable / disable the mod
     modeKey = "F9",           -- next mode (see modeCycle)
     defaultModeKey = "F8",    -- back to the startup mode ("mode" above, phases by default)
+    boardSettings = true,     -- v1.4.0: "Allied Defense" settings on the lobby's Personal Board (SHOP page);
+                              -- the choices are saved in settings.txt and win over the values in this file
+    boardSectionTitle = true, -- v1.4.0: "ALLIED DEFENSE" section title above those settings
     inspectKey = "F6",        -- dump the state of the turrets closest to a living monster into the log
     inspectCount = 4,         -- number of turrets dumped by the inspector
     verboseKey = "F11",       -- enable / disable verbose logs

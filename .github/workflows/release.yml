@@ -30,7 +30,7 @@ jobs:
       - name: Build the mod zip
         run: |
           cd mods
-          zip -r "../AlliedDefense-${GITHUB_REF_NAME}.zip" AlliedDefense -x "*.log"
+          zip -r "../AlliedDefense-${GITHUB_REF_NAME}.zip" AlliedDefense -x "*.log" -x "*/settings.txt"
           cd ..
           unzip -l "AlliedDefense-${GITHUB_REF_NAME}.zip"
 
