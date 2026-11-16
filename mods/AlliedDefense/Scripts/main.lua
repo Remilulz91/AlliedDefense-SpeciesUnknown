@@ -2389,40 +2389,45 @@ end
 -- v1.4.1: Board language (game culture, else the game's own section titles) and lock state
 -- (the local controller has no authority = we joined another player's lobby)
 function board.context()
-    if not board.lang then
-        local want = cfg.boardLanguage
-        local lang, how = nil, nil
-        if want == "en" or want == "fr" then lang, how = want, "config"
-        else
-            local lib = StaticFindObject("/Script/Engine.Default__KismetInternationalizationLibrary")
-            if valid(lib) then
-                for _, fn in ipairs({ "GetCurrentLanguage", "GetCurrentCulture" }) do
-                    local ok, c = pcall(function() return lib[fn](lib) end)
-                    if ok and c ~= nil then
-                        if type(c) ~= "string" then local ok2, sv = pcall(function() return c:ToString() end); c = ok2 and sv or nil end
-                        if type(c) == "string" and c ~= "" then lang, how = (c:lower():sub(1, 2) == "fr") and "fr" or "en", fn .. " " .. c break end
+    -- v1.4.1: the language is checked on every step (the player can switch it in the game's
+    -- options while the Board is open). First source: the game's own section titles on the SHOP
+    -- page, which show the language the game really displays ("Armes" / "Outils" = French,
+    -- anything else = English). Fallback when the page has no title: the engine culture.
+    local lang, how
+    local want = cfg.boardLanguage
+    if want == "en" or want == "fr" then lang, how = want, "config"
+    else
+        for _, w in ipairs(boardPages()) do
+            local sb = w.Items_ScrollBox
+            for i = 0, sb:GetChildrenCount() - 1 do
+                local c = sb:GetChildAt(i)
+                if valid(c) and not board.headers[c:GetFullName()] then
+                    local okT, t = pcall(function() return c:GetText():ToString() end)
+                    if okT and type(t) == "string" and t ~= "" then
+                        local tl = t:lower()
+                        if tl == "armes" or tl == "outils" then lang = "fr" else lang = lang or "en" end
+                        how = 'section title "' .. t .. '"'
+                        if lang == "fr" then break end
                     end
                 end
             end
-            if not lang then
-                -- fallback: the game's own section titles on the SHOP page
-                for _, w in ipairs(boardPages()) do
-                    local sb = w.Items_ScrollBox
-                    for i = 0, sb:GetChildrenCount() - 1 do
-                        local c = sb:GetChildAt(i)
-                        local okT, t = pcall(function() return c:GetText():ToString() end)
-                        if okT and type(t) == "string" then
-                            local tl = t:lower()
-                            if tl == "armes" or tl == "outils" then lang = "fr" elseif tl == "weapons" or tl == "tools" then lang = "en" end
-                            if lang then how = 'section title "' .. t .. '"' break end
-                        end
-                    end
-                    if lang then break end
-                end
-            end
-            lang = lang or "en"
-            how = how or "default"
+            if lang then break end
         end
+        if not lang then
+            if not board.culture then
+                board.culture = "?"
+                local lib = StaticFindObject("/Script/Engine.Default__KismetInternationalizationLibrary")
+                if valid(lib) then
+                    local ok, c = pcall(function() return lib:GetCurrentLanguage() end)
+                    if ok and c ~= nil and type(c) ~= "string" then local ok2, sv = pcall(function() return c:ToString() end); c = ok2 and sv or nil end
+                    if type(c) == "string" and c ~= "" then board.culture = c end
+                end
+            end
+            lang = board.culture:lower():sub(1, 2) == "fr" and "fr" or "en"
+            how = "culture " .. board.culture
+        end
+    end
+    if lang ~= board.lang then
         board.lang = lang
         log("BOARD: language %s (%s)", lang, how)
     end
