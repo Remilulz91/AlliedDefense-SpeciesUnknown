@@ -116,6 +116,7 @@ return {
     boardSettings = true,     -- v1.4.0: "Allied Defense" settings on the lobby's Personal Board (SHOP page);
                               -- the choices are saved in settings.txt and win over the values in this file
     boardSectionTitle = true, -- v1.4.0: "ALLIED DEFENSE" section title above those settings
+    boardLanguage = "auto",   -- v1.4.1: Board texts: "auto" (game language), "en" or "fr"
     inspectKey = "F6",        -- dump the state of the turrets closest to a living monster into the log
     inspectCount = 4,         -- number of turrets dumped by the inspector
     verboseKey = "F11",       -- enable / disable verbose logs

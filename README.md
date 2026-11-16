@@ -70,6 +70,12 @@ to the `config.lua` values) and apply to the next mission.
 The Board is only an interface: if a game update breaks it, the mod keeps working with the
 saved settings (`boardSettings = false` in `config.lua` hides it).
 
+- **Language (1.4.1):** the Board follows the game language, English or French
+  (`boardLanguage = "auto"`, `"en"` or `"fr"` in `config.lua`).
+- **Another player's lobby (1.4.1):** only the host's settings drive the turrets, so the six game
+  settings show "Host" and cannot be changed there; your own choices are kept for the games you
+  host. Turret colours stays free (display only).
+
 ## Keys
 
 Optional: everything above is set on the Board. These keys remain for testing and troubleshooting.
@@ -152,8 +158,10 @@ ally colour is converted to the new green automatically.
 
 **Multiplayer:** turret colours are local to each PC (not replicated). Friends see the mod's
 colours only if they install the mod too; it then runs in "client" mode (colours only, the
-host's mod drives the turrets). Each PC uses the mode set on it: keep the default `phases` for
-matching colours. Friends without the mod see the game colours (green / red).
+host's mod drives the turrets). The host's settings cannot be read by a client, so since 1.4.1 a
+client always shows amber scanning / green shooting, whatever its own mode (the host's phases
+stay secret; chaos purple and neutral grey are only seen by the host). Friends without the mod
+see the game colours (green / red).
 
 ### Explosive canisters (1.1.0, hostile turrets 1.2.0)
 
@@ -199,6 +207,10 @@ AlliedDefense-SpeciesUnknown/
 
 ## Changelog
 
+- **1.4.1** — the Board speaks French when the game does (`boardLanguage`). In another player's
+  lobby the host-only settings are locked ("Host"), only Turret colours can be changed. A friend
+  with the mod always sees amber / green turrets (the host's mode is secret), instead of colours
+  from his own mode that did not match the host's turrets.
 - **1.4.0** — settings on the lobby's Personal Board: an ALLIED DEFENSE section in the SHOP lists
   mode, turret lights, phase length, phase sync, explosive canisters, hostile canisters and turret
   colours, each with a description and the mod's picture. Choices are saved in `settings.txt`

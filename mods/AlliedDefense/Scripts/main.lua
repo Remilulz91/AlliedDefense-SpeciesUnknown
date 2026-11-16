@@ -1,4 +1,4 @@
--- AlliedDefense v1.4.0 - Species: Unknown (UE4SS Lua)
+-- AlliedDefense v1.4.1 - Species: Unknown (UE4SS Lua)
 -- Author: Remilulz_91
 --
 -- Ceiling turrets (BP_SentryGun_C) no longer target players and shoot monsters instead.
@@ -35,7 +35,7 @@
 --
 -- Turret logic runs on the host (HasAuthority). In multiplayer, the host needs the mod.
 
-local VERSION = "1.4.0"
+local VERSION = "1.4.1"
 local MOD = "AlliedDefense"
 
 ---------------------------------------------------------------------------
@@ -96,6 +96,7 @@ default("defaultModeKey", "F8")
 default("boardSettings", true)
 default("modColours", true)
 default("boardSectionTitle", true)
+default("boardLanguage", "auto")
 default("unstickTurrets", true)
 default("stuckSeconds", 6)
 default("modeCycle", { "phases", "ally", "chaos", "neutral", "vanilla" })
@@ -1327,7 +1328,11 @@ end
 -- turret: a monster). Otherwise fire_color = search colour, so the short "alert" flash of a
 -- turret opening (it opens because it saw a player, the mod then drops the player) stays amber.
 local function wantedColors(t)
-    if not cfg.enabled or cfg.mode == "vanilla" or not cfg.modColours then return nil, nil end
+    if not cfg.enabled or not cfg.modColours then return nil, nil end
+    -- v1.4.1: a client cannot read the host's settings (not replicated), so its own mode is
+    -- ignored: always amber scanning / green shooting, as in the default hidden phases
+    if not hasAuthority(t) then return cfg.allyFireColor, cfg.searchColor end
+    if cfg.mode == "vanilla" then return nil, nil end
     local b = behaviourOf(t)
     if b == "neutral" then return cfg.neutralColor, cfg.neutralColor end
     local fire
@@ -1830,16 +1835,25 @@ local BOARD_INFO = {
     price = "price_19_9C1078A245DAAA1D2BA7CAA789069692",
     grade = "GradeUnlock_47_9B0032F74E5F8E4EDAF39D93DCB43CFE",
 }
-local MODE_NAME = { phases = "Phases", ally = "Ally", chaos = "Chaos", neutral = "Neutral", vanilla = "Vanilla" }
+-- v1.4.1: Board texts in English or French (game language, or boardLanguage in config.lua).
+-- Every text below is a pair { English, French }.
+local MODE_NAME = { phases = { "Phases", "Phases" }, ally = { "Ally", "Alliées" }, chaos = { "Chaos", "Chaos" },
+    neutral = { "Neutral", "Neutres" }, vanilla = { "Vanilla", "Jeu de base" } }
 local MODE_TEXT = {
-    phases = "The ship's defence system was damaged when the specimens escaped. Its ceiling turrets "
+    phases = { "The ship's defence system was damaged when the specimens escaped. Its ceiling turrets "
         .. "still protect the crew... most of the time: they silently switch between allied and hostile.",
-    ally = "Repaired defence system: the turrets ignore the crew and shoot the specimens, all the time.",
-    chaos = "Total malfunction: the turrets shoot everybody, crew and specimens.",
-    neutral = "Defence system offline: the turrets come out but shoot nobody.",
-    vanilla = "Allied Defense off: the turrets behave as in the original game.",
+        "Le système de défense du vaisseau a été endommagé lors de l'évasion des spécimens. Ses tourelles "
+        .. "protègent encore l'équipage... la plupart du temps : elles passent en silence d'alliées à hostiles." },
+    ally = { "Repaired defence system: the turrets ignore the crew and shoot the specimens, all the time.",
+        "Système de défense réparé : les tourelles ignorent l'équipage et tirent sur les spécimens, en permanence." },
+    chaos = { "Total malfunction: the turrets shoot everybody, crew and specimens.",
+        "Panne totale : les tourelles tirent sur tout le monde, équipage et spécimens." },
+    neutral = { "Defence system offline: the turrets come out but shoot nobody.",
+        "Système de défense hors ligne : les tourelles sortent mais ne tirent sur personne." },
+    vanilla = { "Allied Defense off: the turrets behave as in the original game.",
+        "Allied Defense désactivé : les tourelles se comportent comme dans le jeu original." },
 }
-local board = { hooked = false, ours = {}, logged = {}, headers = {} }
+local board = { hooked = false, ours = {}, logged = {}, headers = {}, lang = nil, locked = false }
 local B_HIDDEN = 2
 
 local function resetPhases()
@@ -1852,12 +1866,22 @@ local function cycle(list, cur)
     return list[1]
 end
 
+-- text of a { English, French } pair in the Board language
+function board.L(pair)
+    if type(pair) ~= "table" then return tostring(pair) end
+    return board.lang == "fr" and pair[2] or pair[1]
+end
+
 -- One Board entry per setting. index: the page's selection index (never used by the game's
--- lists; OmuAmmoPack uses 99). Clicking a selected entry runs next().
+-- lists; OmuAmmoPack uses 99). Clicking a selected entry runs next(). hostOnly: locked in
+-- another player's lobby (only the host's settings drive the turrets).
+-- label / value / text return { English, French } pairs.
+board.onOff = function(b) return b and { "On", "Oui" } or { "Off", "Non" } end
 local BOARD_ITEMS = {
-    { key = "mode", index = 98,
-      title = function() return "Allied Defense: " .. (MODE_NAME[cfg.mode] or cfg.mode) end,
-      text = function() return MODE_TEXT[cfg.mode] or "" end,
+    { key = "mode", index = 98, hostOnly = true,
+      label = { "Allied Defense", "Allied Defense" },
+      value = function() return MODE_NAME[cfg.mode] or { cfg.mode, cfg.mode } end,
+      text = function() return MODE_TEXT[cfg.mode] or { "", "" } end,
       next = function()
           local m = cycle(cfg.modeCycle, cfg.mode)
           if not VALID_MODES[m] then m = "phases" end
@@ -1867,22 +1891,28 @@ local BOARD_ITEMS = {
           flushStats(true)
           return m
       end },
-    { key = "lights", index = 97,
-      title = function() return "Turret lights: " .. (cfg.revealPhase and "Revealed" or "Hidden") end,
+    { key = "lights", index = 97, hostOnly = true,
+      label = { "Turret lights", "Voyants" },
+      value = function() return cfg.revealPhase and { "Revealed", "Révélés" } or { "Hidden", "Cachés" } end,
       text = function()
-          return "Phases mode only. Hidden: a hostile turret shoots in green like an allied one, you never "
-              .. "know which side it is on. Revealed: a hostile turret shoots in red. "
-              .. "(Friends with the mod always see Hidden: the phase is decided by the host.)"
+          return { "Phases mode only. Hidden: a hostile turret shoots in green like an allied one, you never "
+              .. "know which side it is on. Revealed: a hostile turret shoots in red.",
+              "Mode Phases uniquement. Cachés : une tourelle hostile tire en vert comme une alliée, impossible "
+              .. "de savoir de quel côté elle est. Révélés : une tourelle hostile tire en rouge." }
       end,
       next = function() cfg.revealPhase = not cfg.revealPhase return cfg.revealPhase and "revealed" or "hidden" end },
-    { key = "length", index = 96,
-      title = function()
+    { key = "length", index = 96, hostOnly = true,
+      label = { "Phase length", "Durée des phases" },
+      value = function()
           local n = phaseLengthName()
-          return "Phase length: " .. (n == "short" and "Short" or n == "long" and "Long" or n == "normal" and "Normal" or "Custom")
+          return n == "short" and { "Short", "Courte" } or n == "long" and { "Long", "Longue" }
+              or n == "normal" and { "Normal", "Normale" } or { "Custom", "Perso" }
       end,
       text = function()
-          return string.format("Phases mode only. How long the turrets stay on one side: Short 1-2 min, "
-              .. "Normal 2-5 min, Long 5-10 min. Now: %d-%d s.", cfg.phaseMinSeconds, cfg.phaseMaxSeconds)
+          return { string.format("Phases mode only. How long the turrets stay on one side: Short 1-2 min, "
+              .. "Normal 2-5 min, Long 5-10 min. Now: %d-%d s.", cfg.phaseMinSeconds, cfg.phaseMaxSeconds),
+              string.format("Mode Phases uniquement. Combien de temps les tourelles restent d'un côté : Courte "
+              .. "1-2 min, Normale 2-5 min, Longue 5-10 min. Actuellement : %d-%d s.", cfg.phaseMinSeconds, cfg.phaseMaxSeconds) }
       end,
       next = function()
           local n = cycle({ "short", "normal", "long" }, phaseLengthName())
@@ -1890,35 +1920,64 @@ local BOARD_ITEMS = {
           resetPhases()
           return n
       end },
-    { key = "sync", index = 95,
-      title = function() return "Phase sync: " .. (cfg.phasePerTurret and "Each turret" or "All turrets") end,
+    { key = "sync", index = 95, hostOnly = true,
+      label = { "Phase sync", "Synchro des phases" },
+      value = function() return cfg.phasePerTurret and { "Each turret", "Par tourelle" } or { "All turrets", "Globale" } end,
       text = function()
-          return "Phases mode only. All turrets: the whole ship's defence switches side at once. "
-              .. "Each turret: every turret has its own clock, allied and hostile turrets at the same time."
+          return { "Phases mode only. All turrets: the whole ship's defence switches side at once. "
+              .. "Each turret: every turret has its own clock, allied and hostile turrets at the same time.",
+              "Mode Phases uniquement. Globale : toute la défense du vaisseau change de camp en même temps. "
+              .. "Par tourelle : chaque tourelle a sa propre horloge, alliées et hostiles en même temps." }
       end,
       next = function() cfg.phasePerTurret = not cfg.phasePerTurret resetPhases() return cfg.phasePerTurret and "each" or "all" end },
-    { key = "canisters", index = 94,
-      title = function() return "Explosive canisters: " .. (cfg.shootCanisters and "On" or "Off") end,
+    { key = "canisters", index = 94, hostOnly = true,
+      label = { "Explosive canisters", "Bidons explosifs" },
+      value = function() return board.onOff(cfg.shootCanisters) end,
       text = function()
-          return "On: an allied turret shooting a specimen also hits a fire or frost canister lying next to it "
-              .. "(never when a crew member stands within 8 m). Off: canisters are never hit by the mod."
+          return { "On: an allied turret shooting a specimen also hits a fire or frost canister lying next to it "
+              .. "(never when a crew member stands within 8 m). Off: canisters are never hit by the mod.",
+              "Oui : une tourelle alliée qui tire sur un spécimen touche aussi un bidon de feu ou de glace posé "
+              .. "à côté (jamais si un membre d'équipage est à moins de 8 m). Non : le mod ne touche jamais les bidons." }
       end,
       next = function() cfg.shootCanisters = not cfg.shootCanisters return onoff(cfg.shootCanisters) end },
-    { key = "hostileCanisters", index = 93,
-      title = function() return "Hostile canisters: " .. (cfg.hostileShootCanisters and "On" or "Off") end,
+    { key = "hostileCanisters", index = 93, hostOnly = true,
+      label = { "Hostile canisters", "Bidons hostiles" },
+      value = function() return board.onOff(cfg.hostileShootCanisters) end,
       text = function()
-          return "On: a hostile turret also blows up the canister nearest to its target - even the one in "
-              .. "your hands. Off: only allied turrets hit canisters."
+          return { "On: a hostile turret also blows up the canister nearest to its target - even the one in "
+              .. "your hands. Off: only allied turrets hit canisters.",
+              "Oui : une tourelle hostile fait aussi exploser le bidon le plus proche de sa cible - même celui "
+              .. "que vous tenez. Non : seules les tourelles alliées touchent les bidons." }
       end,
       next = function() cfg.hostileShootCanisters = not cfg.hostileShootCanisters return onoff(cfg.hostileShootCanisters) end },
     { key = "colours", index = 92,
-      title = function() return "Turret colours: " .. (cfg.modColours and "Mod" or "Game") end,
+      label = { "Turret colours", "Couleurs" },
+      value = function() return cfg.modColours and { "Mod", "Mod" } or { "Game", "Jeu" } end,
       text = function()
-          return "Mod: amber scanning, green shooting (allied), purple chaos, grey neutral. "
-              .. "Game: the original green and red lights."
+          return { "Mod: amber scanning, green shooting (allied), purple chaos, grey neutral. In another player's "
+              .. "game: always amber and green (the host's mode is secret). Game: the original green and red lights.",
+              "Mod : ambre en veille, vert en tir (alliées), violet en chaos, gris en neutre. Dans la partie d'un "
+              .. "autre joueur : toujours ambre et vert (le mode de l'hôte est secret). Jeu : les voyants vert "
+              .. "et rouge d'origine." }
       end,
       next = function() cfg.modColours = not cfg.modColours return cfg.modColours and "mod" or "game" end },
 }
+-- entry title / description, in the Board language, "Host" when locked
+function board.title(it)
+    local sep = board.lang == "fr" and " : " or ": "
+    local v = (it.hostOnly and board.locked) and { "Host", "Hôte" } or it.value()
+    return board.L(it.label) .. sep .. board.L(v)
+end
+function board.text(it)
+    if it.hostOnly and board.locked then
+        return board.L({ "You are in another player's lobby: the host's settings drive the turrets. Your own choice ("
+            .. it.value()[1] .. ") is kept for the games you host.",
+            "Vous êtes dans le lobby d'un autre joueur : ce sont les réglages de l'hôte qui pilotent les tourelles. "
+            .. "Votre choix (" .. it.value()[2] .. ") est conservé pour les parties que vous hébergez." })
+    end
+    return board.L(it.text()) .. "\n\n" .. board.L({ "Click again to change. Saved for your next games.",
+        "Cliquez à nouveau pour changer. Enregistré pour vos prochaines parties." })
+end
 local BOARD_BY_INDEX = {}
 for _, it in ipairs(BOARD_ITEMS) do BOARD_BY_INDEX[it.index] = it end
 
@@ -1983,7 +2042,7 @@ local function boardDress(e, it)
         e.bought = true      -- the "bought" look: no price shown on the entry
         e:SetupPrice()
     end
-    local t = it.title()
+    local t = board.title(it)
     if e.TxtTitle:GetText():ToString() ~= t then e.TxtTitle:SetText(FText(t)) end
 end
 
@@ -2011,8 +2070,8 @@ local function boardShowInfo(w, it)
     local info = readProp(w, "WBP_ItemInfo")
     if not valid(info) then return end
     info:UpdateInfo({
-        [BOARD_INFO.name] = FText(it.title()),
-        [BOARD_INFO.description] = FText(it.text() .. "\n\nClick again to change. Saved for your next games."),
+        [BOARD_INFO.name] = FText(board.title(it)),
+        [BOARD_INFO.description] = FText(board.text(it)),
         [BOARD_INFO.price] = 0,
         [BOARD_INFO.grade] = 0,
     })
@@ -2283,6 +2342,11 @@ local function boardClick(w, e, it)
         boardShowInfo(w, it)
         return
     end
+    if it.hostOnly and board.locked then
+        boardShowInfo(w, it)
+        boardLogOnce("locked" .. it.key, "BOARD: %s locked (another player's lobby: the host decides)", it.key)
+        return
+    end
     local v = it.next()
     local saved = saveSettings()
     log("BOARD: %s -> %s%s", it.key, tostring(v), saved and " (saved)" or " (could not write settings.txt)")
@@ -2322,10 +2386,62 @@ local function boardInstallHooks()
 end
 
 -- ~1 s background step: nothing to do outside the lobby (no SHOP page loaded).
+-- v1.4.1: Board language (game culture, else the game's own section titles) and lock state
+-- (the local controller has no authority = we joined another player's lobby)
+function board.context()
+    if not board.lang then
+        local want = cfg.boardLanguage
+        local lang, how = nil, nil
+        if want == "en" or want == "fr" then lang, how = want, "config"
+        else
+            local lib = StaticFindObject("/Script/Engine.Default__KismetInternationalizationLibrary")
+            if valid(lib) then
+                for _, fn in ipairs({ "GetCurrentLanguage", "GetCurrentCulture" }) do
+                    local ok, c = pcall(function() return lib[fn](lib) end)
+                    if ok and c ~= nil then
+                        if type(c) ~= "string" then local ok2, sv = pcall(function() return c:ToString() end); c = ok2 and sv or nil end
+                        if type(c) == "string" and c ~= "" then lang, how = (c:lower():sub(1, 2) == "fr") and "fr" or "en", fn .. " " .. c break end
+                    end
+                end
+            end
+            if not lang then
+                -- fallback: the game's own section titles on the SHOP page
+                for _, w in ipairs(boardPages()) do
+                    local sb = w.Items_ScrollBox
+                    for i = 0, sb:GetChildrenCount() - 1 do
+                        local c = sb:GetChildAt(i)
+                        local okT, t = pcall(function() return c:GetText():ToString() end)
+                        if okT and type(t) == "string" then
+                            local tl = t:lower()
+                            if tl == "armes" or tl == "outils" then lang = "fr" elseif tl == "weapons" or tl == "tools" then lang = "en" end
+                            if lang then how = 'section title "' .. t .. '"' break end
+                        end
+                    end
+                    if lang then break end
+                end
+            end
+            lang = lang or "en"
+            how = how or "default"
+        end
+        board.lang = lang
+        log("BOARD: language %s (%s)", lang, how)
+    end
+    local pc = localController()
+    local locked = valid(pc) and not hasAuthority(pc)
+    if locked ~= board.locked then
+        board.locked = locked
+        log(locked and "BOARD: another player's lobby -> host settings locked (only Turret colours can be changed)"
+            or "BOARD: own lobby -> all settings unlocked")
+        return true
+    end
+    return false
+end
+
 local function boardStep()
     if not cfg.boardSettings then return end
     if not valid(FindFirstOf(BOARD.pageClass)) then return end
     boardInstallHooks()
+    pcall(board.context)
     local added, pages = 0, 0
     for _, w in ipairs(boardPages()) do
         local ok, res = pcall(boardFit, w)
