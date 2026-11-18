@@ -117,6 +117,9 @@ return {
                               -- the choices are saved in settings.txt and win over the values in this file
     boardSectionTitle = true, -- v1.4.0: "ALLIED DEFENSE" section title above those settings
     boardLanguage = "auto",   -- v1.4.1: Board texts: "auto" (game language), "en" or "fr"
+    boardUpgrades = true,     -- v1.4.2: turret upgrades on the Personal Board's UPGRADES page (bought with
+                              -- U.Credits, kept in upgrades.txt; the effect stays even when this is false)
+    resetUpgrades = false,    -- v1.4.2: true = every launch starts with no upgrade (money is not refunded)
     inspectKey = "F6",        -- dump the state of the turrets closest to a living monster into the log
     inspectCount = 4,         -- number of turrets dumped by the inspector
     verboseKey = "F11",       -- enable / disable verbose logs

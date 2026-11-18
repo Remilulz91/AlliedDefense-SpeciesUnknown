@@ -11,6 +11,17 @@ never shoot players anymore and fight the specimens instead.
 > Here: **UE4SS Lua**, no Unreal Engine tooling required.
 > Author: **Remilulz_91** — © 2026 Remilulz_91, all rights reserved.
 
+## The story
+
+When the specimens broke out, the ship's defence system took a hit. Its ceiling turrets still run,
+but their friend-or-foe module is damaged: they protect the crew... most of the time. Some hours
+they hold the line against the specimens, other hours they turn their barrels on the people they
+were built to protect, and they never tell which side they are on.
+
+The crew has learnt to live with it. From the Personal Board they choose the defence protocol, and
+with enough U.Credits they pay for repairs: a recalibrated feed so the turrets fire much faster at
+the specimens, and dampers that slow their fire down as soon as the target wears a suit.
+
 ## Requirements
 
 - Species: Unknown (UE 5.7)
@@ -75,6 +86,25 @@ saved settings (`boardSettings = false` in `config.lua` hides it).
 - **Another player's lobby (1.4.1):** only the host's settings drive the turrets, so the six game
   settings show "Host" and cannot be changed there; your own choices are kept for the games you
   host. Turret colours stays free (display only).
+
+## Turret upgrades (Personal Board, 1.4.2)
+
+In the lobby, open the **Personal Board** → **UPGRADES**: the **ALLIED DEFENSE** section at the
+bottom sells two turret upgrades with U.Credits, through the game's own purchase popup.
+
+| Upgrade | Level I | Level II |
+|---|---|---|
+| **Gun calibration**: fire rate at specimens | ×1.5 — 4 000 U | ×2 — 6 000 U |
+| **Crew dampers**: fire rate at the crew | ×0.75 — 3 500 U | ×0.5 — 5 000 U |
+
+Prices sit in the middle of the game's own upgrades (1 000 – 14 500 U). The turret has no damage value
+of its own (the shot's damage is fixed in its Blueprint), so the upgrades change its fire rate
+(`fire_delay`, 0.1 s in the game) according to what it is aiming at: same change in firepower.
+They work in every mode except Vanilla, and only the **host's** upgrades count (the host's PC drives
+the turrets). Purchases are saved in `ue4ss\Mods\AlliedDefense\upgrades.txt`, never in the game's
+save: removing the mod leaves the save untouched (the money spent is not refunded).
+`resetUpgrades = true` in `config.lua` starts every launch with no upgrade (testing);
+`boardUpgrades = false` hides the entries (bought upgrades still apply).
 
 ## Keys
 
@@ -198,8 +228,9 @@ AlliedDefense-SpeciesUnknown/
 ├── mods/
 │   ├── AlliedDefense/              <- the mod
 │   │   ├── enabled.txt
-│   │   ├── Scripts/ main.lua, config.lua
-│   │   └── art/ AlliedDefense_icon.png   <- picture shown on the Board
+│   │   ├── Scripts/                <- main.lua loads core, turrets, protect, board, upgrades, keys
+│   │   │                              (one shared environment), + config.lua
+│   │   └── art/                    <- Board pictures (icon, upgrade panel / splash, upgrade circles)
 ├── archive/AlliedDefenseDiag/      <- diagnostic tool used to reverse the turret (not installed;
 │                                      its Ctrl+F5..F9 hooks crashed the game alongside the mod)
 └── tools/                          <- install / install-dev / uninstall / find-mods (.bat)
@@ -207,6 +238,11 @@ AlliedDefense-SpeciesUnknown/
 
 ## Changelog
 
+- **1.4.2** — turret upgrades bought with U.Credits on the Personal Board's UPGRADES page: Gun
+  calibration (fire rate at specimens x1.5 / x2) and Crew dampers (fire rate at the crew x0.75 / x0.5),
+  with the game's purchase popup, level circles and "upgrade purchased" screen; saved in
+  `upgrades.txt`. The code is split into several files (Lua caps a single file at 200 local
+  variables). The story of the mod.
 - **1.4.1** — the Board speaks French when the game does (`boardLanguage`). In another player's
   lobby the host-only settings are locked ("Host"), only Turret colours can be changed. A friend
   with the mod always sees amber / green turrets (the host's mode is secret), instead of colours
