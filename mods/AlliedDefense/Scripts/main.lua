@@ -1,4 +1,4 @@
--- AlliedDefense v1.4.2 - Species: Unknown (UE4SS Lua)
+-- AlliedDefense v1.4.3 - Species: Unknown (UE4SS Lua)
 -- Author: Remilulz_91
 --
 -- Ceiling turrets (BP_SentryGun_C) no longer target players and shoot monsters instead.
@@ -38,11 +38,12 @@
 -- Since 1.4.2 the code is split into several files, loaded in this order into one shared
 -- environment (a table that falls back to the global one): a name set at the top of a file
 -- is visible to the files loaded after it, and nothing leaks into other mods.
-local VERSION = "1.4.2"
+local VERSION = "1.4.3"
 local MOD = "AlliedDefense"
 
 local FILES = { "core", "turrets", "protect", "board", "upgrades", "keys" }
 local Env = setmetatable({ VERSION = VERSION, MOD = MOD }, { __index = _G })
+ALLIED_DEFENSE_ENV = Env   -- (each UE4SS mod has its own Lua state: only for tests / debugging)
 
 local function scriptsDir()
     local src = (debug.getinfo(1, "S") or {}).source or ""

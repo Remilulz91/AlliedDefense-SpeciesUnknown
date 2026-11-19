@@ -216,7 +216,7 @@ the feature to allied turrets.
 | Poulpi | `BP_Monster_Poulpi_C` | the only monster vanilla turrets already shoot |
 | Michel (dog) | `BP_Monster_Michel_C` | |
 | Eye | `BP_Monster_Eye_C` | `IsSpider`, `HaveShield`; not targeted while shielded (bullets are blocked) |
-| Ghost | `BP_Monster_Ghost_C` | immune to bullets, targeted only while `IsFrozen` |
+| Ghost | `BP_Monster_Ghost_C` | immune to bullets; targeted while being frozen (`IsFrozen`) and while lying frozen solid on the ground (`FrostValue` melting from 1 to 0, ~25 s) |
 | Zombies | `BP_Monster_ZombieMaster_C` | |
 
 All monsters inherit `BP_ParentMonster_C` (with `IsDead`); players inherit `BP_ParentCharacter_C`.
@@ -238,6 +238,12 @@ AlliedDefense-SpeciesUnknown/
 
 ## Changelog
 
+- **1.4.3** — the frozen ghost is shot until it thaws. The ghost has two frozen stages: up in the
+  air while the frost weapon hits it (`IsFrozen`), then on the ground frozen solid for ~25 s
+  (`IsFrozen` back to false, `FrostValue` melting); turrets now shoot it in both
+  (`ghostFrozenOnGround`). A monster that becomes untargetable while being the target (thawed
+  ghost, shielded Eye) is dropped at once: the turret no longer stays locked on it, green and
+  silent. Ctrl+F6 shows why a monster is not targetable.
 - **1.4.2** — turret upgrades bought with U.Credits on the Personal Board's UPGRADES page: Gun
   calibration (fire rate at specimens x1.5 / x2) and Crew dampers (fire rate at the crew x0.75 / x0.5),
   with the game's purchase popup, level circles and "upgrade purchased" screen; saved in
@@ -345,7 +351,7 @@ AlliedDefense-SpeciesUnknown/
 - **Bullets of an allied turret still hurt players standing in the line of fire.** The
   protection (`protectPlayersFromAllyFire`) is experimental and **off**: every working version
   (0.9.4–0.9.6) crashed the game. Do not enable it in a real game.
-- The Eye is not targeted while shielded, the ghost only while frozen (bullets are blocked).
+- The Eye is not targeted while shielded, the ghost only while frozen, standing or on the ground (bullets are blocked otherwise).
 - **Multiplayer**: tested in a private hosted game with friends playing **without** the mod
   (v1.2.0, ~5 h, several missions): no bug, no crash. Only the host needs the mod.
 - Zombie games: one crash in 0.9.4 (code removed since); not re-tested with 1.0.0.

@@ -24,6 +24,7 @@ default("targetMonsters", true)
 default("forceDeploy", false)
 default("ignoredMonsters", {})
 default("targetOnlyWhen", { BP_Monster_Ghost_C = "IsFrozen" })
+default("ghostFrozenOnGround", true)
 default("friendSubstituteClasses", { "BP_BigRobot_C" })
 default("blockPlayerWake", true)
 default("playerWakeThreshold", 1000000.0)
@@ -204,10 +205,25 @@ end
 cache = { t = -1, players = {}, monsters = {}, allMonsters = {}, friendSubs = {} }
 
 -- Is this monster a valid target right now? (alive + optional condition)
+-- v1.4.3: the ghost has two frozen stages. While the frost weapon hits it, it stays up in the
+-- air with IsFrozen = true and its FrostValue climbs to 1. Then it falls to the ground frozen
+-- solid: IsFrozen goes back to false and FrostValue slowly melts down to 0 (~25 s, longer if
+-- frozen again) before it teleports away. The turrets now keep shooting it on the ground:
+-- "down" from FrostValue >= 0.9 until it is back under 0.02.
+ghostDown = {}
+function ghostFrozenSolid(m)
+    local f = readProp(m, "FrostValue")
+    if type(f) ~= "number" then return false end
+    local key = shortName(m)
+    if f >= 0.9 then ghostDown[key] = true elseif f < 0.02 then ghostDown[key] = nil end
+    return ghostDown[key] == true
+end
+
 function isTargetable(m)
     if not valid(m) then return false end
     if readProp(m, "IsDead") == true then return false end
     local cn = className(m)
+    if cn == "BP_Monster_Ghost_C" and cfg.ghostFrozenOnGround and ghostFrozenSolid(m) then return true end
     local cond = cfg.targetOnlyWhen and cfg.targetOnlyWhen[cn]
     if cond and readProp(m, cond) ~= true then return false end
     local block = cfg.targetUnlessTrue and cfg.targetUnlessTrue[cn]

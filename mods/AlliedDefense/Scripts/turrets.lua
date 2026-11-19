@@ -353,10 +353,36 @@ end
 -- Right before aiming/shooting: a player target is dropped (ally) / any target (neutral).
 restoreHookFn = nil   -- set once restoreAllyHits exists (v0.9.6)
 colorHookFn = nil     -- set once applyColor exists (v1.3.0)
+-- v1.4.3: a monster that became untargetable while being the target (the ghost when its
+-- freeze wears off, the Eye raising its shield) is dropped. The game never re-checks its
+-- target: the turret stayed locked on the unfrozen ghost, green and silent, until it left.
+function fixUntargetableTarget(t, where)
+    local cur = readProp(t, "current_trg")
+    if kindOf(cur) ~= "monster" or isTargetable(cur) then return false end
+    local ok = pcall(function() t.current_trg = nil end)
+    count(ok and ("untargetable_target_dropped_" .. where) or "ERR_drop_untargetable")
+    if ok then
+        local name = shortName(t)
+        if not stuck[name] then
+            local e = entry(t)
+            if e then stuck[name] = { e = e, at = os.clock() } end
+        end
+        -- (the game picks it again many times a second: one line per turret every 3 s)
+        untargetableLogged = untargetableLogged or {}
+        local now = os.clock()
+        if cfg.verbose and (untargetableLogged[name] or -1e9) + 3 < now then
+            untargetableLogged[name] = now
+            log("TARGET %s -> %s no longer targetable (%s), dropped", name, tag(cur), where)
+        end
+    end
+    return ok
+end
+
 function preShootInner(ctx)
     if restoreHookFn then pcall(restoreHookFn) end
     local t = getSelf(ctx)
     local b = behave(t)
+    if b ~= nil and valid(t) and hasAuthority(t) then pcall(fixUntargetableTarget, t, "shoot") end
     if b == "neutral" then dropAnyTarget(t) return end
     if b ~= "ally" or not cfg.ignorePlayers then return end
     purgePlayersFromPotential(t)

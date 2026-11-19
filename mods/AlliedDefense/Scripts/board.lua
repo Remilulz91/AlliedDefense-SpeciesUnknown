@@ -676,7 +676,7 @@ function background()
         { "dmgHooks", tryRegisterDamageHooks }, { "restore", restoreHookFn }, { "allyHits", checkAllyHits },
         { "phases", updatePhases }, { "canisters", refreshCanisters }, { "unstick", unstickTurrets }, { "settings", applyTurretSettings }, { "wake", wakeTurrets },
         { "purge", purgeAllPlayers }, { "inject", injectAll }, { "dumpMonsters", dumpMonsters },
-        { "dumpDamage", dumpDamageFunctions },
+        { "dumpDamage", dumpDamageFunctions }, { "ghostWatch", ghostWatch },
     }
     local total, parts = 0, {}
     -- the snapshot holds UObjects: it must NEVER survive this tick, even after an error

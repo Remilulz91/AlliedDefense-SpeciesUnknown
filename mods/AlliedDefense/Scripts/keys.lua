@@ -90,9 +90,18 @@ function inspect()
             log("  monster %s  targetable=true", tag(m))
         else
             dead = dead + 1
+            -- why not: the turret ignores dead monsters, the unfrozen ghost, the shielded Eye
+            if dead <= 5 then
+                local why = {}
+                for _, pn in ipairs({ "IsDead", "IsFrozen", "HaveShield" }) do
+                    local v = readProp(m, pn)
+                    if v ~= nil then why[#why + 1] = pn .. "=" .. tostring(v) end
+                end
+                log("  monster %s  targetable=false  %s", tag(m), table.concat(why, "  "))
+            end
         end
     end
-    log("  (+ %d dead / untargetable monsters not listed)", dead)
+    if dead > 5 then log("  (+ %d more untargetable monsters not listed)", dead - 5) end
     for i = 1, math.min(cfg.inspectCount, #rows) do
         local r = rows[i]
         local t = r.t
@@ -290,3 +299,65 @@ prefix = cfg.modifier and (cfg.modifier .. "+") or ""
 log("AlliedDefense v%s loaded (%s, mode %s). %s%s = on/off, %s%s = next mode, %s%s = default mode, %s%s = inspect, %s%s = verbose logs. Log: %s",
     VERSION, cfg.enabled and "enabled" or "disabled", describeMode(),
     prefix, cfg.toggleKey, prefix, cfg.modeKey, prefix, cfg.defaultModeKey, prefix, cfg.inspectKey, prefix, cfg.verboseKey, LOG_PATH)
+
+-- v1.4.3, diagnostic (debugLogs = true only): the ghost's state over time. IsFrozen went
+-- back to false 3 s after a freeze while the ghost still looked frozen: every ghost property
+-- that looks like a freeze / damage / state flag is logged once, then each time it changes.
+GHOST_WORDS = { "freez", "frozen", "ice", "frost", "cold", "stun", "slow", "immun", "invul", "vuln",
+    "damage", "dmg", "state", "visib", "hidden", "materiali", "phase", "solid", "hit", "can" }
+GHOST_TYPES = { BoolProperty = true, FloatProperty = true, DoubleProperty = true, IntProperty = true,
+    ByteProperty = true, EnumProperty = true, NameProperty = true }
+ghostWatchState = { props = nil, last = {} }
+function ghostWatchProps(g)
+    local list = {}
+    local cls = g:GetClass()
+    local depth = 0
+    while valid(cls) and depth < 8 do
+        local cn = shortName(cls)
+        if cn == "Pawn" or cn == "Character" or cn == "Actor" then break end
+        pcall(function()
+            cls:ForEachProperty(function(p)
+                local pt = shortName(p:GetClass())
+                if GHOST_TYPES[pt] then
+                    local n = p:GetFName():ToString()
+                    local nl = n:lower()
+                    for _, w in ipairs(GHOST_WORDS) do
+                        if nl:find(w, 1, true) then list[#list + 1] = n break end
+                    end
+                end
+            end)
+        end)
+        local ok, sup = pcall(function() return cls:GetSuperStruct() end)
+        cls = ok and sup or nil
+        depth = depth + 1
+    end
+    return list
+end
+function ghostWatch()
+    if not cfg.debugLogs then return end
+    local ghosts = findAll("BP_Monster_Ghost_C")
+    for _, g in ipairs(ghosts) do
+        if valid(g) then
+            if not ghostWatchState.props then
+                ghostWatchState.props = ghostWatchProps(g)
+                log("GHOST: watching %d properties: %s", #ghostWatchState.props, table.concat(ghostWatchState.props, ", "))
+            end
+            local key = shortName(g)
+            local last = ghostWatchState.last[key] or {}
+            local changes = {}
+            for _, n in ipairs(ghostWatchState.props) do
+                local v = readProp(g, n)
+                local s
+                if type(v) == "number" then s = string.format("%.2f", v)
+                elseif type(v) == "boolean" or type(v) == "string" then s = tostring(v)
+                else local ok, t = pcall(function() return v:ToString() end); s = ok and tostring(t) or "?" end
+                if last[n] ~= s then
+                    changes[#changes + 1] = n .. (last[n] and (" " .. last[n] .. " -> ") or " = ") .. s
+                    last[n] = s
+                end
+            end
+            ghostWatchState.last[key] = last
+            if #changes > 0 then log("GHOST %s: %s", key, table.concat(changes, "  ")) end
+        end
+    end
+end

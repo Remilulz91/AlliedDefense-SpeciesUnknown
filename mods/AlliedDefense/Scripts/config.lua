@@ -78,6 +78,7 @@ return {
     -- Monsters targeted only while a boolean property is true
     -- (ghost: immune to bullets unless frozen). Dead monsters (IsDead) are never targeted.
     targetOnlyWhen = { BP_Monster_Ghost_C = "IsFrozen" },
+    ghostFrozenOnGround = true, -- v1.4.3: also shoot the ghost lying on the ground frozen solid (FrostValue melting)
     -- Monsters NOT targeted while a boolean property is true (Eye: shield blocks bullets)
     targetUnlessTrue = { BP_Monster_Eye_C = "HaveShield" },
     -- Vanilla "friend" monsters, used as a substitute to make a player a "friend"
